@@ -174,8 +174,9 @@ func TestDeploymentLifecycle(t *testing.T) {
 }
 
 func TestExcludedNamespaceIsNotAnalyzed(t *testing.T) {
-	create(t, deployment(excludedNamespace, "web", privileged(hardenedPodSpec())))
-	expectNeverRecorded(t, "Deployment/"+excludedNamespace+"/web")
+	name := unique("web")
+	create(t, deployment(excludedNamespace, name, privileged(hardenedPodSpec())))
+	expectNeverRecorded(t, "Deployment/"+excludedNamespace+"/"+name)
 }
 
 func TestTemplateKinds(t *testing.T) {
@@ -308,29 +309,30 @@ func TestServiceAccountChangeReanalyzesWorkloads(t *testing.T) {
 }
 
 func TestRBAC(t *testing.T) {
+	wide, builtIn, aggregated := unique("too-wide"), unique("system:test-builtin"), unique("aggregated")
+	secrets, binding := unique("reads-secrets"), unique("ci-admin")
 	wildcard := []rbacv1.PolicyRule{{APIGroups: []string{"apps"}, Resources: []string{"*"}, Verbs: []string{"get"}}}
+	readSecrets := []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"list"}}}
 	create(t,
-		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "too-wide"}, Rules: wildcard},
-		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "system:test-builtin"}, Rules: wildcard},
-		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: "aggregated"},
+		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: wide}, Rules: wildcard},
+		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: builtIn}, Rules: wildcard},
+		&rbacv1.ClusterRole{ObjectMeta: metav1.ObjectMeta{Name: aggregated},
 			AggregationRule: &rbacv1.AggregationRule{ClusterRoleSelectors: []metav1.LabelSelector{{MatchLabels: map[string]string{"x": "y"}}}}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Namespace: operatorNamespace, Name: "reads-secrets"},
-			Rules: []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"list"}}}},
-		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Namespace: excludedNamespace, Name: "reads-secrets"},
-			Rules: []rbacv1.PolicyRule{{APIGroups: []string{""}, Resources: []string{"secrets"}, Verbs: []string{"list"}}}},
-		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: "ci-admin"},
+		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Namespace: operatorNamespace, Name: secrets}, Rules: readSecrets},
+		&rbacv1.Role{ObjectMeta: metav1.ObjectMeta{Namespace: excludedNamespace, Name: secrets}, Rules: readSecrets},
+		&rbacv1.ClusterRoleBinding{ObjectMeta: metav1.ObjectMeta{Name: binding},
 			RoleRef:  rbacv1.RoleRef{APIGroup: rbacv1.GroupName, Kind: "ClusterRole", Name: "cluster-admin"},
 			Subjects: []rbacv1.Subject{{Kind: rbacv1.ServiceAccountKind, Name: "ci", Namespace: "build"}}},
 	)
-	r := expectRules(t, "ClusterRole/too-wide", rules.IDWildcardRBAC)
+	r := expectRules(t, "ClusterRole/"+wide, rules.IDWildcardRBAC)
 	if r.res.Namespace != "" || r.res.APIVersion != rbacAPIVersion {
 		t.Fatalf("ClusterRole resource = %+v", r.res)
 	}
-	expectRules(t, "Role/"+operatorNamespace+"/reads-secrets", rules.IDBroadRBAC)
-	expectRules(t, "ClusterRoleBinding/ci-admin", rules.IDClusterAdminBinding)
-	expectNeverRecorded(t, "ClusterRole/system:test-builtin")
-	expectNeverRecorded(t, "ClusterRole/aggregated")
-	expectNeverRecorded(t, "Role/"+excludedNamespace+"/reads-secrets")
+	expectRules(t, "Role/"+operatorNamespace+"/"+secrets, rules.IDBroadRBAC)
+	expectRules(t, "ClusterRoleBinding/"+binding, rules.IDClusterAdminBinding)
+	expectNeverRecorded(t, "ClusterRole/"+builtIn)
+	expectNeverRecorded(t, "ClusterRole/"+aggregated)
+	expectNeverRecorded(t, "Role/"+excludedNamespace+"/"+secrets)
 }
 
 func TestNamespaceNetworkPolicy(t *testing.T) {
