@@ -118,8 +118,10 @@ func broadEvidence(policy []rbacv1.PolicyRule) string {
 // break-glass administrator group. Bindings to them are expected and not reported.
 var installerAdminGroups = []string{"system:masters", "kubeadm:cluster-admins"}
 
-// EvaluateBinding runs the enabled RoleBinding/ClusterRoleBinding rules.
-func EvaluateBinding(roleRef rbacv1.RoleRef, subjects []rbacv1.Subject, s Settings) []Violation {
+// EvaluateBinding runs the enabled RoleBinding/ClusterRoleBinding rules. namespace is the
+// RoleBinding's namespace, or empty for a ClusterRoleBinding: a RoleBinding to
+// cluster-admin grants full access to that namespace only, and the evidence says so.
+func EvaluateBinding(namespace string, roleRef rbacv1.RoleRef, subjects []rbacv1.Subject, s Settings) []Violation {
 	if !s.Enabled(IDClusterAdminBinding) || roleRef.Kind != "ClusterRole" || roleRef.Name != "cluster-admin" {
 		return nil
 	}
@@ -137,10 +139,14 @@ func EvaluateBinding(roleRef rbacv1.RoleRef, subjects []rbacv1.Subject, s Settin
 	if len(names) == 0 {
 		return nil
 	}
+	scope := "cluster-wide"
+	if namespace != "" {
+		scope = "in namespace " + namespace
+	}
 	return []Violation{{
 		RuleID:   IDClusterAdminBinding,
 		Severity: s.Severity(IDClusterAdminBinding),
-		Evidence: "roleRef is ClusterRole cluster-admin, bound to " + strings.Join(names, ", "),
+		Evidence: "roleRef is ClusterRole cluster-admin, bound " + scope + " to " + strings.Join(names, ", "),
 	}}
 }
 
