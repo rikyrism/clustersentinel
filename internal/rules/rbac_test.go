@@ -91,17 +91,21 @@ func TestEvaluateBinding(t *testing.T) {
 	sa := rbacv1.Subject{Kind: rbacv1.ServiceAccountKind, Name: "ci", Namespace: "build"}
 	masters := rbacv1.Subject{Kind: rbacv1.GroupKind, Name: "system:masters"}
 
-	vs := EvaluateBinding(admin, []rbacv1.Subject{masters, sa}, strict())
-	if len(vs) != 1 || vs[0].Evidence != "roleRef is ClusterRole cluster-admin, bound to ServiceAccount build/ci" {
+	vs := EvaluateBinding("", admin, []rbacv1.Subject{masters, sa}, strict())
+	if len(vs) != 1 || vs[0].Evidence != "roleRef is ClusterRole cluster-admin, bound cluster-wide to ServiceAccount build/ci" {
 		t.Fatalf("got %+v", vs)
 	}
-	if vs := EvaluateBinding(admin, []rbacv1.Subject{masters}, strict()); len(vs) != 0 {
+	vs = EvaluateBinding("build", admin, []rbacv1.Subject{sa}, strict())
+	if len(vs) != 1 || vs[0].Evidence != "roleRef is ClusterRole cluster-admin, bound in namespace build to ServiceAccount build/ci" {
+		t.Fatalf("RoleBinding: got %+v", vs)
+	}
+	if vs := EvaluateBinding("", admin, []rbacv1.Subject{masters}, strict()); len(vs) != 0 {
 		t.Fatalf("installer group must not be reported, got %+v", vs)
 	}
-	if vs := EvaluateBinding(rbacv1.RoleRef{Kind: "ClusterRole", Name: "view"}, []rbacv1.Subject{sa}, strict()); len(vs) != 0 {
+	if vs := EvaluateBinding("", rbacv1.RoleRef{Kind: "ClusterRole", Name: "view"}, []rbacv1.Subject{sa}, strict()); len(vs) != 0 {
 		t.Fatalf("view binding reported: %+v", vs)
 	}
-	if vs := EvaluateBinding(rbacv1.RoleRef{Kind: "Role", Name: "cluster-admin"}, []rbacv1.Subject{sa}, strict()); len(vs) != 0 {
+	if vs := EvaluateBinding("build", rbacv1.RoleRef{Kind: "Role", Name: "cluster-admin"}, []rbacv1.Subject{sa}, strict()); len(vs) != 0 {
 		t.Fatalf("a Role named cluster-admin is not the ClusterRole: %+v", vs)
 	}
 }
