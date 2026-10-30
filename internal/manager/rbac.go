@@ -26,7 +26,7 @@ package manager
 // here: the Helm chart grants "get" on the notification Secrets by name, in the
 // operator's namespace only.
 
-// +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets,verbs=get;list;watch
+// +kubebuilder:rbac:groups=apps,resources=deployments;statefulsets;daemonsets;replicasets,verbs=get;list;watch
 // +kubebuilder:rbac:groups=batch,resources=jobs;cronjobs,verbs=get;list;watch
 // +kubebuilder:rbac:groups="",resources=pods;serviceaccounts;namespaces,verbs=get;list;watch
 // +kubebuilder:rbac:groups=rbac.authorization.k8s.io,resources=roles;rolebindings;clusterroles;clusterrolebindings,verbs=get;list;watch
