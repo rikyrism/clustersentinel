@@ -18,11 +18,13 @@ package controller
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"slices"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -189,9 +191,17 @@ func ruleIDs(vs []rules.Violation) []string {
 	return ids
 }
 
-// newNamespace creates a namespace for one test.
+var runs atomic.Int32
+
+// unique suffixes name so that tests can run repeatedly in one process (go test -count=N),
+// where objects from earlier runs still exist: envtest has no namespace controller to
+// delete them.
+func unique(name string) string { return fmt.Sprintf("%s-%d", name, runs.Add(1)) }
+
+// newNamespace creates a namespace for one test and returns its unique name.
 func newNamespace(t *testing.T, name string) string {
 	t.Helper()
+	name = unique(name)
 	if err := k8s.Create(context.Background(), &corev1.Namespace{ObjectMeta: metav1.ObjectMeta{Name: name}}); err != nil {
 		t.Fatal(err)
 	}
