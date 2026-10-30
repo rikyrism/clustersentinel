@@ -24,6 +24,7 @@ import (
 	"time"
 
 	securityv1alpha1 "github.com/rikyrism/clustersentinel/api/v1alpha1"
+	"github.com/rikyrism/clustersentinel/internal/rules"
 )
 
 func writeConfig(t *testing.T, body string) string {
@@ -121,5 +122,20 @@ func TestNamespaceSelected(t *testing.T) {
 		if got := c.n.NamespaceSelected(c.ns); got != c.want {
 			t.Errorf("%+v.NamespaceSelected(%q) = %v, want %v", c.n, c.ns, got, c.want)
 		}
+	}
+}
+
+func TestRuleSettings(t *testing.T) {
+	s := Default().Scanner
+	s.Rules = map[string]bool{"runAsRoot": false, "missingNetworkPolicy": true}
+	got := s.RuleSettings()
+	if got.Enabled(rules.IDRunAsRoot) {
+		t.Error("runAsRoot disabled in config but enabled")
+	}
+	if !got.Enabled(rules.IDMissingNetworkPolicy) {
+		t.Error("missingNetworkPolicy enabled in config but disabled")
+	}
+	if !got.Enabled(rules.IDPrivileged) {
+		t.Error("privilegedContainer from the recommended profile is disabled")
 	}
 }
