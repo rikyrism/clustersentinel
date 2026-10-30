@@ -140,7 +140,8 @@ func (r *bindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 		return r.forget(ctx, key)
 	}
 	roleRef, subjects := r.binding(obj)
-	r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), rules.EvaluateBinding(roleRef, subjects, r.Settings))
+	vs := rules.EvaluateBinding(obj.GetNamespace(), roleRef, subjects, r.Settings)
+	r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), vs)
 	return r.done()
 }
 
