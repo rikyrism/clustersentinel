@@ -39,6 +39,7 @@ import (
 
 	securityv1alpha1 "github.com/rikyrism/clustersentinel/api/v1alpha1"
 	"github.com/rikyrism/clustersentinel/internal/config"
+	"github.com/rikyrism/clustersentinel/internal/controller"
 	"github.com/rikyrism/clustersentinel/internal/manager"
 	"github.com/rikyrism/clustersentinel/internal/version"
 	// +kubebuilder:scaffold:imports
@@ -144,7 +145,20 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Controllers are registered here as they are implemented (see docs/implementation-plan.md).
+	ctx := ctrl.SetupSignalHandler()
+	settings := cfg.Scanner.RuleSettings()
+	setupLog.Info("Rules enabled", "rules", settings.EnabledIDs())
+	if err := controller.Setup(ctx, mgr, &controller.Scanner{
+		Client:                  mgr.GetClient(),
+		Recorder:                controller.NewLogRecorder(),
+		Namespaces:              cfg.Scanner.Namespaces,
+		Settings:                settings,
+		Rescan:                  cfg.Scanner.ScanInterval.Duration,
+		MaxConcurrentReconciles: cfg.Scanner.MaxConcurrentReconciles,
+	}); err != nil {
+		setupLog.Error(err, "Failed to set up controllers")
+		os.Exit(1)
+	}
 	// +kubebuilder:scaffold:builder
 
 	if err := mgr.AddHealthzCheck("healthz", healthz.Ping); err != nil {
@@ -157,7 +171,7 @@ func main() {
 	}
 
 	setupLog.Info("Starting manager")
-	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
+	if err := mgr.Start(ctx); err != nil {
 		setupLog.Error(err, "Manager exited with an error")
 		os.Exit(1)
 	}
