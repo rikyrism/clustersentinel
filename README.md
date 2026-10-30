@@ -30,7 +30,7 @@
 
 Install one small pod. ClusterSentinel watches your Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, Pods and RBAC, checks them against 18 built-in rules (privileged containers, host namespaces, root users, `latest` tags, wildcard RBAC, cluster-admin bindings and more) and stores every issue as a `SecurityFinding` you can read with `kubectl`. It never changes your workloads: it tells you what to fix and how, and you decide.
 
-> **Status: pre-alpha (Phase 1 of 7).** The operator runs, the CRDs install, and the RBAC, hardening and metrics endpoint are tested on kind. **It does not scan anything yet**: the rules engine arrives in Phase 2. Everything under [Features](#features) is the 0.1 target; [docs/implementation-plan.md](docs/implementation-plan.md) tracks what is done.
+> **Status: pre-alpha (Phase 2 of 7).** The operator watches workloads, Pods, RBAC and namespaces and evaluates all 18 rules, but **it only logs what it finds**: results become `SecurityFinding` resources in Phase 3, and the CLI, notifications and Helm chart come after that. Everything under [Features](#features) is the 0.1 target; [docs/implementation-plan.md](docs/implementation-plan.md) tracks what is done.
 
 ## Features
 
@@ -65,8 +65,15 @@ cd clustersentinel
 make kind-deploy                          # local kind cluster, image built and loaded, operator deployed
 export KUBECONFIG=$PWD/bin/kind-dev.kubeconfig
 kubectl -n clustersentinel-system get pods
+kubectl -n clustersentinel-system logs deploy/clustersentinel-controller-manager | grep "Analysis result"
 kubectl apply -k config/samples/          # example SecurityPolicy, SecurityFinding and SecurityReport
 kubectl get securitypolicies,securityfindings -A
+```
+
+Until Phase 3, results are log lines such as:
+
+```json
+{"msg":"Analysis result changed","resourceKind":"Pod","resourceNamespace":"demo","resourceName":"debug","violations":8,"rules":["CS-CONTAINER-001/debug","CS-CONTAINER-002/debug","CS-IMAGE-002/debug","CS-SA-001", "..."]}
 ```
 
 The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/config`, so they cannot reach any other cluster. `make kind-down` deletes the cluster.
@@ -75,9 +82,9 @@ The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/c
 
 | Command | What it does |
 | --- | --- |
-| `make test` | Unit tests and CRD validation tests against a real API server (envtest) |
+| `make test` | Unit tests, plus CRD validation and controller tests against a real API server (envtest) |
 | `make lint` | golangci-lint |
-| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics and RBAC, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
+| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics, RBAC and detection of an insecure workload, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
 | `make run` | Runs the operator on your machine against the **current** kubeconfig context (check it first) |
 | `make manifests generate` | Regenerates CRDs, RBAC and deepcopy code after changing `api/` or RBAC markers |
 
@@ -135,8 +142,9 @@ spec:
 api/v1alpha1/          CRD types: SecurityPolicy, SecurityFinding, SecurityReport (+ schema tests)
 cmd/                   Operator entrypoint (manager)
 internal/config/       Operator configuration (from Helm values), validation
+internal/controller/   Controllers: workloads, Pods, RBAC, namespaces (+ envtest tests)
 internal/manager/      Cache trimming, memory limit, RBAC contract
-internal/rules/        Rule catalog: IDs, keys, default severities, profiles
+internal/rules/        Rule catalog, profiles and the 18 rule checks
 config/                Kustomize manifests: CRDs, RBAC, manager, samples
 hack/                  kind cluster config, development config
 test/e2e/              End-to-end tests on kind
@@ -146,7 +154,7 @@ docs/                  Implementation plan, architecture, assets
 ## Roadmap
 
 1. ~~Bootstrap: CRDs, manager, Dockerfile, kind workflow, RBAC contract~~ (done)
-2. Workload scanning: controllers, analyzer, the 18 rules
+2. ~~Workload scanning: controllers, analyzer, the 18 rules~~ (done)
 3. Findings: reconciliation, deduplication, resolution, retention
 4. Configuration: profiles, overrides, namespace filtering
 5. CLI: `summary`, `findings`, `describe`, `report`, `fix`, `rules`, CI gate
@@ -155,7 +163,8 @@ docs/                  Implementation plan, architecture, assets
 
 ## Limitations
 
-- Pre-alpha: no rule is evaluated yet, and the CLI and Helm chart do not exist yet.
+- Pre-alpha: results are only logged; SecurityFindings, the CLI, notifications and the Helm chart do not exist yet.
+- `SecurityPolicy` objects are not read yet (Phase 4): the operator-wide profile and rules apply to every namespace.
 - Tested on Kubernetes 1.31, 1.32, 1.33 and 1.34 (kind, full e2e) and 1.37 (envtest); not yet on a managed cluster (EKS, GKE, AKS).
 - The NetworkPolicy rule only checks whether a namespace has any NetworkPolicy. It is a hint, not proof that traffic is or is not restricted.
 - Resource figures are targets until they are measured on a large cluster.
