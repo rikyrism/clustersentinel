@@ -154,9 +154,9 @@ only rules explicitly enabled in the policy run.
 - Pods of controllers ClusterSentinel does not know (operators, custom resources) are
   analyzed as one group per controller UID and reported against the controller, with the
   union of their violations: 50 replicas give one result, not 50.
-- Pod updates are only seen when they change `metadata.generation` (Kubernetes 1.33+ for
-  Pods). On older versions, a change such as an added ephemeral container is picked up by
-  the next rescan.
+- Pod updates are only seen when they change `metadata.generation`, which only newer
+  Kubernetes versions set on Pods. Where it is not set, a change such as an added
+  ephemeral container is picked up by the next rescan.
 
 ## Rule details
 
@@ -186,7 +186,10 @@ only rules explicitly enabled in the policy run.
 - **Built-in RBAC** (label `kubernetes.io/bootstrapping=rbac-defaults` or a `system:`
   name) and aggregated ClusterRoles are not evaluated. Bindings of `cluster-admin` to the
   installer administrator groups `system:masters` and `kubeadm:cluster-admins` are not
-  reported.
+  reported. Kubernetes reserves the `system:` prefix but does not enforce it, so someone
+  allowed to create RBAC objects could hide one by naming it `system:...`.
+- **cluster-admin bindings** are reported for ClusterRoleBindings and for RoleBindings;
+  the evidence says whether the access is cluster-wide or limited to one namespace.
 - **NetworkPolicy:** only namespaces that contain Pods are reported.
 
 ClusterSentinel's own manifests pass its RBAC rules: the scaffolded admin roles list their
