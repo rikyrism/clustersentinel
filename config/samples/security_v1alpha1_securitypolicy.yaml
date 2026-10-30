@@ -1,0 +1,19 @@
+apiVersion: security.clustersentinel.io/v1alpha1
+kind: SecurityPolicy
+metadata:
+  name: production-baseline
+  namespace: default
+spec:
+  profile: recommended
+  rules:
+    privilegedContainer:
+      enabled: true
+      severity: CRITICAL
+    runAsRoot:
+      severity: HIGH
+    missingNetworkPolicy:
+      enabled: true
+  remediation:
+    mode: manual
+  notifications:
+    enabled: true

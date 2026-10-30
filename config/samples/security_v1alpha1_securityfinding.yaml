@@ -1,0 +1,26 @@
+# Findings are created by the operator. This example shows the shape of one;
+# applying it by hand is only useful for testing the CLI.
+apiVersion: security.clustersentinel.io/v1alpha1
+kind: SecurityFinding
+metadata:
+  name: deployment-payment-worker-cs-container-001-3f9a1c2e
+  namespace: default
+  labels:
+    security.clustersentinel.io/rule-id: CS-CONTAINER-001
+    security.clustersentinel.io/severity: CRITICAL
+spec:
+  ruleID: CS-CONTAINER-001
+  ruleVersion: 1
+  severity: CRITICAL
+  resource:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-worker
+    namespace: default
+    uid: 00000000-0000-0000-0000-000000000000
+    container: worker
+  title: Privileged container
+  description: Container "worker" runs with privileged access to the node.
+  evidence: spec.template.spec.containers[worker].securityContext.privileged=true
+  recommendation: Set securityContext.privileged to false if the application does not need host-level access.
+  documentationURL: https://github.com/rikyrism/clustersentinel/blob/main/docs/security-rules.md#cs-container-001

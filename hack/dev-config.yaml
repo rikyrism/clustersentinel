@@ -1,0 +1,8 @@
+# Operator configuration for "make run" (runs on your host against the current kubeconfig).
+clusterName: dev
+scanner:
+  mode: audit
+  scanInterval: 30m
+  profile: recommended
+  namespaces:
+    exclude: [kube-system, local-path-storage]

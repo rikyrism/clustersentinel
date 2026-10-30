@@ -1,0 +1,438 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.22.0
+  name: securitypolicies.security.clustersentinel.io
+spec:
+  group: security.clustersentinel.io
+  names:
+    categories:
+    - clustersentinel
+    kind: SecurityPolicy
+    listKind: SecurityPolicyList
+    plural: securitypolicies
+    shortNames:
+    - secpol
+    - spol
+    singular: securitypolicy
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.profile
+      name: Profile
+      type: string
+    - jsonPath: .status.conditions[?(@.type=="Active")].status
+      name: Active
+      type: string
+    - jsonPath: .metadata.creationTimestamp
+      name: Age
+      type: date
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: SecurityPolicy configures ClusterSentinel's checks for one namespace.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            default: {}
+            description: spec defines which checks run
+            properties:
+              notifications:
+                default: {}
+                description: notifications controls notifications for this namespace.
+                properties:
+                  enabled:
+                    default: true
+                    description: |-
+                      enabled allows notifications for findings in this namespace. Delivery also requires
+                      a notification channel configured on the operator (Helm values).
+                    type: boolean
+                type: object
+              profile:
+                default: recommended
+                description: profile selects the base rule set.
+                enum:
+                - basic
+                - recommended
+                - strict
+                - custom
+                type: string
+              remediation:
+                default: {}
+                description: remediation controls remediation behavior.
+                properties:
+                  mode:
+                    default: manual
+                    description: mode is always manual in this version.
+                    enum:
+                    - manual
+                    type: string
+                type: object
+              rules:
+                description: rules overrides the profile per rule.
+                properties:
+                  allowPrivilegeEscalation:
+                    description: CS-CONTAINER-002
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  dangerousCapabilities:
+                    description: CS-CONTAINER-006
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  defaultServiceAccount:
+                    description: CS-SA-002
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  dropCapabilities:
+                    description: CS-CONTAINER-005
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  hostIPC:
+                    description: CS-CONTAINER-010
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  hostNetwork:
+                    description: CS-CONTAINER-008
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  hostPID:
+                    description: CS-CONTAINER-009
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  implicitImageTag:
+                    description: CS-IMAGE-002
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  latestImageTag:
+                    description: CS-IMAGE-001
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  missingNetworkPolicy:
+                    description: CS-NETWORK-001
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  privilegedContainer:
+                    description: CS-CONTAINER-001
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  readOnlyRootFilesystem:
+                    description: CS-CONTAINER-004
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  runAsRoot:
+                    description: CS-CONTAINER-003
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  seccompProfile:
+                    description: CS-CONTAINER-007
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                  serviceAccountToken:
+                    description: CS-SA-001
+                    properties:
+                      enabled:
+                        description: enabled turns the rule on or off. Unset keeps
+                          the profile's choice.
+                        type: boolean
+                      severity:
+                        description: severity overrides the rule's default severity.
+                          Unset keeps the default.
+                        enum:
+                        - CRITICAL
+                        - HIGH
+                        - MEDIUM
+                        - LOW
+                        - INFO
+                        type: string
+                    type: object
+                type: object
+            type: object
+          status:
+            description: status defines the observed state of SecurityPolicy
+            properties:
+              conditions:
+                description: 'conditions: "Active" is True when this policy is the
+                  one in effect for its namespace.'
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+                x-kubernetes-list-map-keys:
+                - type
+                x-kubernetes-list-type: map
+              observedGeneration:
+                description: observedGeneration is the most recent generation processed
+                  by the operator.
+                format: int64
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

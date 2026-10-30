@@ -1,0 +1,8 @@
+# The operator creates and maintains exactly one report, named "cluster", in its own
+# namespace. This file is only an example of the object.
+apiVersion: security.clustersentinel.io/v1alpha1
+kind: SecurityReport
+metadata:
+  name: cluster
+  namespace: clustersentinel-system
+spec: {}

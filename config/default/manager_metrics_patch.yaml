@@ -1,0 +1,4 @@
+# Expose Prometheus metrics over HTTP on :8080 (use --metrics-secure for HTTPS with authn/authz).
+- op: add
+  path: /spec/template/spec/containers/0/args/0
+  value: --metrics-bind-address=:8080
