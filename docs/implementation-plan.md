@@ -8,8 +8,8 @@ assumptions made where the requirements were ambiguous, and the status of each p
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1. Bootstrap | Go module, Kubebuilder project, CRD types, manager, Dockerfile, kind workflow, RBAC contract | **Done** |
-| 2. Workload scanning | Workload controllers, analyzer, the 18 rules, unit tests | Next |
-| 3. Findings | Finding reconciliation, deduplication, resolution, retention | Planned |
+| 2. Workload scanning | Workload, Pod, RBAC and namespace controllers, the 18 rules, unit and envtest tests | **Done** (results are logged; Phase 3 writes them) |
+| 3. Findings | Finding reconciliation, deduplication, resolution, retention | Next |
 | 4. Configuration | SecurityPolicy profiles, overrides, namespace filtering | Planned (config schema done) |
 | 5. CLI | `summary`, `findings`, `describe`, `report`, `fix`, `rules`, `version` | Planned |
 | 6. Notifications and metrics | Discord, Slack, generic webhook; Prometheus metrics | Planned |
@@ -48,12 +48,15 @@ fields and is cheap.
 | Pods controlled by a ReplicaSet, StatefulSet, DaemonSet or Job keep only metadata in the cache; their template is analyzed instead | `internal/manager/cache.go` | Done |
 | Secrets and ConfigMaps are never cached (and Secrets are never listed) | `internal/manager/cache.go`, RBAC | Done |
 | `namespaces.include` limits the cache to those namespaces (plus the operator's own) | `internal/manager/cache.go` | Done |
-| `namespaces.exclude` applied server-side as a field selector on namespaced watches | Phase 2 | Planned |
+| `namespaces.exclude` applied server-side as a field selector on namespaced watches | `internal/manager/cache.go` | Done |
+| ReplicaSets owned by a Deployment and Jobs owned by a CronJob drop their pod template in the cache | `internal/manager/cache.go` | Done |
+| Controllers (and informers) for disabled rule scopes are not started: with the default profile, NetworkPolicies are never watched | `internal/controller/scanner.go` | Done |
 | Go soft memory limit = 90% of the container limit | `internal/manager/memory.go` | Done |
 | Client QPS 10 / burst 20, at most 2 concurrent reconciles per controller | `cmd/main.go`, config | Done |
-| Reconcile only on `metadata.generation` changes (status churn ignored) | Phase 2 | Planned |
-| Hash of the security-relevant template fields + policy generation; unchanged → no analysis, no writes | Phase 2–3 | Planned |
-| Periodic rescan reads from the cache, default every 30 minutes, `0` disables it | Phase 2 | Planned (config done) |
+| Reconcile only on `metadata.generation` or controller changes (status churn ignored) | `internal/controller/scanner.go` | Done (verified by envtest) |
+| ServiceAccount changes re-analyze only the workloads using it (field index), and only when `automountServiceAccountToken` changes | `internal/controller/scanner.go` | Done |
+| Fingerprint of each result; an unchanged result is not logged (Phase 3: not written) | `internal/controller/recorder.go` | Done |
+| Periodic rescan from the cache, default every 30 minutes with 10% jitter so it never arrives all at once, `0` disables it | `internal/controller/scanner.go` | Done |
 | `lastDetectedAt` refreshed at most once per rescan interval | Phase 3 | Planned |
 | Findings carry an ownerReference to their workload, so Kubernetes deletes them with it | Phase 3 | Planned |
 | Resolved findings deleted after `resolvedRetention` (default 7 days) | Phase 3 | Planned |
@@ -61,9 +64,15 @@ fields and is cheap.
 | One cluster SecurityReport, updated at most once a minute | Phase 3 | Planned |
 
 Starting resources: requests 25m CPU / 64Mi, limits 200m CPU / 128Mi. These are targets
-to be measured, not guarantees. Measured so far (Phase 1, no controllers yet, kind):
-about 26 MB RSS and 7 MB heap at idle. Clusters with thousands of Pods will probably need
-a 256Mi limit; sizing guidance will be published after Phase 2 with measurements.
+to be measured, not guarantees. Measured on kind (one node, about 15 Pods):
+
+| Build | RSS | Go heap in use |
+| --- | --- | --- |
+| Phase 1, no controllers | 26 MB | 7 MB |
+| Phase 2, all controllers running | 32 MB | 9 MB |
+
+Clusters with thousands of Pods will probably need a 256Mi limit; sizing guidance will be
+published once it is measured on a large cluster.
 
 ## CRDs
 
@@ -137,12 +146,51 @@ only rules explicitly enabled in the policy run.
   workload, never per replica.
 - Jobs created by a CronJob are skipped (the CronJob is analyzed); standalone Jobs are
   analyzed.
+- ReplicaSets owned by a Deployment are skipped. Other ReplicaSets (Argo Rollouts, bare
+  ReplicaSets) are analyzed while they have replicas; scaled-down old revisions are not, so
+  every revision is not reported again.
 - Pods controlled by a ReplicaSet, StatefulSet, DaemonSet or Job are skipped.
-- Every other Pod is analyzed itself: standalone Pods, static (mirror) Pods, and Pods of
-  controllers ClusterSentinel does not know (Argo Rollouts, other operators). Grouping those
-  by controller UID to avoid one finding per replica is part of Phase 2.
-- Bare ReplicaSets (not owned by a Deployment) are a known gap until Phase 2 decides
-  whether to watch ReplicaSets with a metadata-only cache.
+- Standalone Pods and static (mirror) Pods are analyzed one by one.
+- Pods of controllers ClusterSentinel does not know (operators, custom resources) are
+  analyzed as one group per controller UID and reported against the controller, with the
+  union of their violations: 50 replicas give one result, not 50.
+- Pod updates are only seen when they change `metadata.generation` (Kubernetes 1.33+ for
+  Pods). On older versions, a change such as an added ephemeral container is picked up by
+  the next rescan.
+
+## Rule details
+
+- **Inheritance.** `runAsUser`, `runAsNonRoot` and `seccompProfile` are read from the
+  container first, then the pod, as the kubelet does. A non-zero `runAsUser` passes
+  `runAsRoot` on its own; otherwise `runAsNonRoot: true` is required. The image's `USER`
+  is not known, so the rule says "may run as root".
+- **Containers.** Init and ephemeral containers are checked like regular ones. Container
+  rules give one result per container; pod rules (`host*`, ServiceAccount) one per workload.
+- **Windows pods** (`spec.os.name: windows`) skip the Linux-only rules: privilege
+  escalation, root user, read-only root filesystem, capabilities and seccomp.
+- **Images.** A registry port is not a tag (`registry:5000/app` has no tag). An image
+  pinned by digest passes both image rules, even with `:latest` in front of the digest.
+- **Service account token.** The pod's `automountServiceAccountToken` wins; otherwise the
+  ServiceAccount's; otherwise the token is mounted (the Kubernetes default). The operator's
+  own Deployment is reported: it needs its token to read the API.
+- **Dangerous capabilities:** `ALL`, `SYS_ADMIN`, `SYS_MODULE`, `SYS_PTRACE`, `SYS_RAWIO`,
+  `SYS_BOOT`, `SYS_TIME`, `NET_ADMIN`, `NET_RAW`, `DAC_READ_SEARCH`, `BPF`, `PERFMON`,
+  `MAC_ADMIN`, `MAC_OVERRIDE`, with or without the `CAP_` prefix, in any case.
+- **Wildcard RBAC** means `*` in `verbs` or `resources`. `*` in `apiGroups` alone is not
+  reported.
+- **Broad RBAC** means, without a `resourceNames` restriction: reading Secrets
+  (`get`/`list`/`watch`), `create` on `pods/exec`, `pods/attach` or
+  `serviceaccounts/token`, `get`/`create` on `nodes/proxy`, `impersonate` on users, groups
+  or ServiceAccounts, and `escalate`/`bind` on roles. A rule with a wildcard is reported by
+  the wildcard rule only.
+- **Built-in RBAC** (label `kubernetes.io/bootstrapping=rbac-defaults` or a `system:`
+  name) and aggregated ClusterRoles are not evaluated. Bindings of `cluster-admin` to the
+  installer administrator groups `system:masters` and `kubeadm:cluster-admins` are not
+  reported.
+- **NetworkPolicy:** only namespaces that contain Pods are reported.
+
+ClusterSentinel's own manifests pass its RBAC rules: the scaffolded admin roles list their
+verbs instead of using `*`.
 
 ## RBAC
 
@@ -177,10 +225,10 @@ uses `status.notifiedSeverity` / `status.notifiedState` on each finding.
 
 | Level | Tool | Covers | Status |
 | --- | --- | --- | --- |
-| Unit | `go test` | Rule catalog, config validation, cache trimming, memory limit; later every rule (positive and negative), finding identity, notifier formatting and retry | Phase 1 parts done |
+| Unit | `go test` | Rule catalog, config validation, cache trimming, memory limit, every rule (positive, negative, inheritance, Windows, image references), result change detection; later finding identity, notifier formatting and retry | Phase 1–2 parts done |
 | API | envtest | CRD schema validation and defaults on a real API server | Done |
-| Controller | envtest | Create / update / delete workloads, findings created, updated, resolved, no duplicates, namespace exclusion, policy changes, rescan | Phase 2–4 |
-| End-to-end | kind | Deploy, pod hardening, metrics, RBAC least privilege; later the full insecure → finding → fixed → resolved workflow | Phase 1 parts done |
+| Controller | envtest | Every workload kind, CronJob Jobs and Deployment ReplicaSets skipped, Pod groups, ServiceAccount changes, RBAC, NetworkPolicy, status updates ignored, excluded namespace; later findings created, updated, resolved, policy changes | Phase 2 parts done |
+| End-to-end | kind | Deploy, pod hardening, metrics, RBAC least privilege, insecure Deployment detected then cleared, cluster-admin binding detected; later the same through SecurityFindings | Phase 1–2 parts done |
 | Manual checks | kind, buildx | `make run`; `--metrics-secure` (401 without token, 403 without permission, 200 with `metrics-reader`); amd64 and arm64 images build and run | Done 2026-10-30 |
 | Helm | `helm lint`, `helm template`, kubeconform | Chart validity, RBAC, security context | Phase 7 |
 
