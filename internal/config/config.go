@@ -200,6 +200,15 @@ func (c Config) Validate() error {
 	return errors.Join(errs...)
 }
 
+// RuleSettings returns the operator-wide rule set: Profile with Rules applied on top.
+func (s Scanner) RuleSettings() rules.Settings {
+	overrides := make(map[string]rules.Override, len(s.Rules))
+	for key, enabled := range s.Rules {
+		overrides[key] = rules.Override{Enabled: &enabled}
+	}
+	return rules.NewSettings(s.Profile, overrides)
+}
+
 // NamespaceSelected reports whether ns is in scope. Exclude wins over Include.
 func (n Namespaces) NamespaceSelected(ns string) bool {
 	if slices.Contains(n.Exclude, ns) {
