@@ -1,5 +1,4 @@
 //go:build e2e
-// +build e2e
 
 /*
 Copyright 2026.
@@ -20,6 +19,8 @@ limitations under the License.
 package e2e
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
 	"os/exec"
 	"strings"
@@ -39,6 +40,77 @@ const (
 
 func kubectl(args ...string) (string, error) {
 	return utils.Run(exec.Command("kubectl", args...))
+}
+
+func kubectlApply(manifest string) error {
+	cmd := exec.Command("kubectl", "apply", "-f", "-")
+	cmd.Stdin = strings.NewReader(manifest)
+	_, err := utils.Run(cmd)
+	return err
+}
+
+// analysisLog is one "Analysis result changed" line of the operator's JSON log.
+type analysisLog struct {
+	Msg               string   `json:"msg"`
+	ResourceKind      string   `json:"resourceKind"`
+	ResourceNamespace string   `json:"resourceNamespace"`
+	ResourceName      string   `json:"resourceName"`
+	Violations        int      `json:"violations"`
+	Rules             []string `json:"rules"`
+}
+
+// lastAnalysis returns the latest analysis logged for a resource, or nil.
+func lastAnalysis(g Gomega, pod, kind, resNamespace, name string) *analysisLog {
+	out, err := kubectl("logs", pod, "-n", namespace)
+	g.Expect(err).NotTo(HaveOccurred())
+	var last *analysisLog
+	sc := bufio.NewScanner(strings.NewReader(out))
+	sc.Buffer(make([]byte, 1<<20), 1<<20)
+	for sc.Scan() {
+		var l analysisLog
+		if json.Unmarshal(sc.Bytes(), &l) != nil || l.Msg != "Analysis result changed" {
+			continue
+		}
+		if l.ResourceKind == kind && l.ResourceNamespace == resNamespace && l.ResourceName == name {
+			last = &l
+		}
+	}
+	return last
+}
+
+const workloadsNamespace = "e2e-workloads"
+
+// webDeployment renders a Deployment; insecure adds a privileged container on a latest image.
+func webDeployment(insecure bool) string {
+	image, sc := "registry.k8s.io/pause:3.10", `
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities: {drop: [ALL]}`
+	if insecure {
+		image, sc = "registry.k8s.io/pause:latest", `
+            privileged: true`
+	}
+	return fmt.Sprintf(`apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: %s
+spec:
+  replicas: 1
+  selector: {matchLabels: {app: web}}
+  template:
+    metadata: {labels: {app: web}}
+    spec:
+      automountServiceAccountToken: false
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        seccompProfile: {type: RuntimeDefault}
+      containers:
+        - name: app
+          image: %s
+          securityContext:%s
+`, workloadsNamespace, image, sc)
 }
 
 var _ = Describe("Manager", Ordered, func() {
@@ -126,7 +198,10 @@ var _ = Describe("Manager", Ordered, func() {
 			out, _ := kubectl("auth", "can-i", verb, resource, "-A", as)
 			return strings.TrimSpace(out)
 		}
-		for _, r := range []string{"deployments.apps", "pods", "clusterroles.rbac.authorization.k8s.io", "networkpolicies.networking.k8s.io"} {
+		for _, r := range []string{
+			"deployments.apps", "replicasets.apps", "pods",
+			"clusterroles.rbac.authorization.k8s.io", "networkpolicies.networking.k8s.io",
+		} {
 			Expect(canI("watch", r)).To(Equal("yes"), "watch "+r)
 		}
 		for _, check := range [][2]string{
@@ -137,5 +212,52 @@ var _ = Describe("Manager", Ordered, func() {
 			Expect(canI(check[0], check[1])).To(Equal("no"), check[0]+" "+check[1])
 		}
 		Expect(canI("create", "securityfindings.security.clustersentinel.io")).To(Equal("yes"))
+	})
+
+	Context("scanning", func() {
+		BeforeAll(func() {
+			_, err := kubectl("create", "ns", workloadsNamespace)
+			Expect(err).NotTo(HaveOccurred())
+		})
+		AfterAll(func() {
+			_, _ = kubectl("delete", "clusterrolebinding", "e2e-ci-admin", "--ignore-not-found")
+			_, _ = kubectl("delete", "ns", workloadsNamespace, "--ignore-not-found", "--wait=false")
+		})
+
+		It("detects an insecure Deployment and clears it once fixed", func() {
+			Expect(kubectlApply(webDeployment(true))).To(Succeed())
+			Eventually(func(g Gomega) {
+				l := lastAnalysis(g, controllerPodName, "Deployment", workloadsNamespace, "web")
+				g.Expect(l).NotTo(BeNil())
+				g.Expect(l.Rules).To(ContainElements("CS-CONTAINER-001/app", "CS-CONTAINER-002/app", "CS-IMAGE-001/app"))
+			}).Should(Succeed())
+
+			Expect(kubectlApply(webDeployment(false))).To(Succeed())
+			Eventually(func(g Gomega) {
+				l := lastAnalysis(g, controllerPodName, "Deployment", workloadsNamespace, "web")
+				g.Expect(l).NotTo(BeNil())
+				g.Expect(l.Violations).To(BeZero(), "rules still reported: %v", l.Rules)
+			}).Should(Succeed())
+
+			By("analyzing the template, not each replica")
+			out, err := kubectl("logs", controllerPodName, "-n", namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).NotTo(ContainSubstring(`"resourceKind":"Pod","resourceNamespace":"` + workloadsNamespace))
+			Expect(out).NotTo(ContainSubstring(`"resourceKind":"ReplicaSet","resourceNamespace":"` + workloadsNamespace))
+		})
+
+		It("detects a cluster-admin binding and ignores the installer's admin group", func() {
+			_, err := kubectl("create", "clusterrolebinding", "e2e-ci-admin", "--clusterrole=cluster-admin",
+				"--serviceaccount="+workloadsNamespace+":ci")
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				l := lastAnalysis(g, controllerPodName, "ClusterRoleBinding", "", "e2e-ci-admin")
+				g.Expect(l).NotTo(BeNil())
+				g.Expect(l.Rules).To(Equal([]string{"CS-RBAC-002"}))
+			}).Should(Succeed())
+			out, err := kubectl("logs", controllerPodName, "-n", namespace)
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).NotTo(ContainSubstring(`"resourceName":"kubeadm:cluster-admins"`))
+		})
 	})
 })
