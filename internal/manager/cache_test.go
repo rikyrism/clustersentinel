@@ -20,6 +20,7 @@ import (
 	"testing"
 
 	appsv1 "k8s.io/api/apps/v1"
+	batchv1 "k8s.io/api/batch/v1"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
@@ -88,5 +89,58 @@ func TestCacheOptionsNamespaces(t *testing.T) {
 	_, own := opts.DefaultNamespaces["clustersentinel-system"]
 	if !web || !own || len(opts.DefaultNamespaces) != 3 {
 		t.Errorf("DefaultNamespaces = %v", opts.DefaultNamespaces)
+	}
+}
+
+func controllerRef(apiVersion, kind string) []metav1.OwnerReference {
+	isController := true
+	return []metav1.OwnerReference{{APIVersion: apiVersion, Kind: kind, Name: "owner", UID: "u", Controller: &isController}}
+}
+
+func TestStripReplicaSetAndJob(t *testing.T) {
+	tmpl := corev1.PodTemplateSpec{Spec: corev1.PodSpec{Containers: []corev1.Container{{Name: "c", Image: "nginx:1.27"}}}}
+
+	fromDeployment := &appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{OwnerReferences: controllerRef("apps/v1", "Deployment")},
+		Spec: appsv1.ReplicaSetSpec{Template: tmpl}}
+	fromRollout := &appsv1.ReplicaSet{ObjectMeta: metav1.ObjectMeta{OwnerReferences: controllerRef("argoproj.io/v1alpha1", "Rollout")},
+		Spec: appsv1.ReplicaSetSpec{Template: tmpl}}
+	if o, _ := StripReplicaSet(fromDeployment); len(o.(*appsv1.ReplicaSet).Spec.Template.Spec.Containers) != 0 {
+		t.Error("a Deployment's ReplicaSet must drop its template")
+	}
+	if o, _ := StripReplicaSet(fromRollout); len(o.(*appsv1.ReplicaSet).Spec.Template.Spec.Containers) != 1 {
+		t.Error("a ReplicaSet of another controller must keep its template to be analyzed")
+	}
+
+	fromCronJob := &batchv1.Job{ObjectMeta: metav1.ObjectMeta{OwnerReferences: controllerRef("batch/v1", "CronJob")},
+		Spec: batchv1.JobSpec{Template: tmpl}}
+	standalone := &batchv1.Job{Spec: batchv1.JobSpec{Template: tmpl}}
+	if o, _ := StripJob(fromCronJob); len(o.(*batchv1.Job).Spec.Template.Spec.Containers) != 0 {
+		t.Error("a CronJob's Job must drop its template")
+	}
+	if o, _ := StripJob(standalone); len(o.(*batchv1.Job).Spec.Template.Spec.Containers) != 1 {
+		t.Error("a standalone Job must keep its template")
+	}
+}
+
+func TestCacheOptionsExcludeSelector(t *testing.T) {
+	cfg := config.Default()
+	cfg.Scanner.Namespaces.Exclude = []string{"kube-system", "monitoring"}
+	opts := CacheOptions(cfg, "clustersentinel-system")
+	if len(opts.ByObject) != len(namespacedWatched()) {
+		t.Fatalf("ByObject has %d entries, want %d", len(opts.ByObject), len(namespacedWatched()))
+	}
+	for obj, by := range opts.ByObject {
+		if by.Field == nil || by.Transform == nil {
+			t.Fatalf("%T: missing field selector or transform", obj)
+		}
+		if got, want := by.Field.String(), "metadata.namespace!=kube-system,metadata.namespace!=monitoring"; got != want {
+			t.Fatalf("%T: selector %q, want %q", obj, got, want)
+		}
+	}
+	cfg.Scanner.Namespaces.Exclude = nil
+	for obj, by := range CacheOptions(cfg, "clustersentinel-system").ByObject {
+		if by.Field != nil {
+			t.Fatalf("%T: selector set with nothing excluded", obj)
+		}
 	}
 }
