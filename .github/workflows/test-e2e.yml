@@ -23,16 +23,26 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Install the latest version of kind
+      - name: Install kind (pinned, checksum verified)
+        env:
+          KIND_VERSION: v0.30.0
+          KIND_SHA256_amd64: 517ab7fc89ddeed5fa65abf71530d90648d9638ef0c4cde22c2c11f8097b8889
+          KIND_SHA256_arm64: 7ea2de9d2d190022ed4a8a4e3ac0636c8a455e460b9a13ccf19f15d07f4f00eb
         run: |
-          curl -Lo ./kind https://kind.sigs.k8s.io/dl/latest/kind-linux-$(go env GOARCH)
+          arch=$(go env GOARCH)
+          sum_var="KIND_SHA256_${arch}"
+          curl -fsSLo ./kind "https://github.com/kubernetes-sigs/kind/releases/download/${KIND_VERSION}/kind-linux-${arch}"
+          echo "${!sum_var}  ./kind" | sha256sum --check --strict
           chmod +x ./kind
           sudo mv ./kind /usr/local/bin/kind
 
       - name: Verify kind installation
         run: kind version
 
-      - name: Running Test e2e
+      - name: Check go.mod is tidy
         run: |
           go mod tidy
-          make test-e2e
+          git diff --exit-code go.mod go.sum
+
+      - name: Running Test e2e
+        run: make test-e2e

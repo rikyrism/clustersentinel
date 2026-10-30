@@ -14,3 +14,9 @@ All notable changes are documented here. The format follows
 - Manager with JSON logging, leader election, health probes, Prometheus metrics endpoint, a trimmed informer cache and a Go memory limit derived from the container limit.
 - Least-privilege ClusterRole (read-only on audited resources, no Secret access).
 - Hardened deployment manifests, Dockerfile with version metadata, kind development targets isolated from `~/.kube/config`, and an e2e suite.
+- `KIND_NODE_IMAGE` option for `make test-e2e` to test other Kubernetes versions; verified on 1.31 to 1.34.
+
+### Security
+- Pin kind (v0.30.0, checksum verified) in the e2e workflow and the logcheck lint plugin (v0.11.0).
+- CI fails when `go.mod`/`go.sum` are not tidy or generated code is stale, instead of fixing it silently.
+- Remove the privileged devcontainer that installed unpinned tools.

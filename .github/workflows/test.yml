@@ -23,7 +23,12 @@ jobs:
         with:
           go-version-file: go.mod
 
-      - name: Running Tests
+      - name: Check go.mod is tidy
         run: |
           go mod tidy
+          git diff --exit-code go.mod go.sum
+
+      - name: Running Tests
+        run: |
           make test
+          git diff --exit-code -- api config || { echo "Generated files are stale: run 'make manifests generate' and commit"; exit 1; }

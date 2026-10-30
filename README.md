@@ -14,7 +14,7 @@
   <a href="https://github.com/rikyrism/clustersentinel/actions/workflows/test.yml"><img src="https://github.com/rikyrism/clustersentinel/actions/workflows/test.yml/badge.svg" alt="Tests"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-2dbe8c" alt="Apache-2.0 License"></a>
   <img src="https://img.shields.io/badge/operator-Go%20%C2%B7%20controller--runtime-111111" alt="Go and controller-runtime">
-  <img src="https://img.shields.io/badge/tested%20on-Kubernetes%201.34%20%C2%B7%201.37-111111" alt="Tested on Kubernetes 1.34 and 1.37">
+  <img src="https://img.shields.io/badge/kubernetes-1.31%20%E2%80%93%201.37-111111" alt="Kubernetes 1.31 to 1.37">
   <img src="https://img.shields.io/badge/storage-CRDs%20only-111111" alt="CRDs only">
 </p>
 
@@ -77,7 +77,7 @@ The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/c
 | --- | --- |
 | `make test` | Unit tests and CRD validation tests against a real API server (envtest) |
 | `make lint` | golangci-lint |
-| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics and RBAC, then deletes the cluster |
+| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics and RBAC, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
 | `make run` | Runs the operator on your machine against the **current** kubeconfig context (check it first) |
 | `make manifests generate` | Regenerates CRDs, RBAC and deepcopy code after changing `api/` or RBAC markers |
 
@@ -156,7 +156,7 @@ docs/                  Implementation plan, architecture, assets
 ## Limitations
 
 - Pre-alpha: no rule is evaluated yet, and the CLI and Helm chart do not exist yet.
-- Not tested on a managed cluster (EKS, GKE, AKS) yet, only on kind and envtest.
+- Tested on Kubernetes 1.31, 1.32, 1.33 and 1.34 (kind, full e2e) and 1.37 (envtest); not yet on a managed cluster (EKS, GKE, AKS).
 - The NetworkPolicy rule only checks whether a namespace has any NetworkPolicy. It is a hint, not proof that traffic is or is not restricted.
 - Resource figures are targets until they are measured on a large cluster.
 

@@ -181,6 +181,7 @@ uses `status.notifiedSeverity` / `status.notifiedState` on each finding.
 | API | envtest | CRD schema validation and defaults on a real API server | Done |
 | Controller | envtest | Create / update / delete workloads, findings created, updated, resolved, no duplicates, namespace exclusion, policy changes, rescan | Phase 2–4 |
 | End-to-end | kind | Deploy, pod hardening, metrics, RBAC least privilege; later the full insecure → finding → fixed → resolved workflow | Phase 1 parts done |
+| Manual checks | kind, buildx | `make run`; `--metrics-secure` (401 without token, 403 without permission, 200 with `metrics-reader`); amd64 and arm64 images build and run | Done 2026-10-30 |
 | Helm | `helm lint`, `helm template`, kubeconform | Chart validity, RBAC, security context | Phase 7 |
 
 The kind targets and e2e tests use their own kubeconfig files in `bin/`, so they never read
@@ -210,5 +211,7 @@ or change `~/.kube/config` and cannot reach any cluster other than the local kin
   `missingSeccomp`) so that one name means one rule everywhere.
 - Metrics are served over plain HTTP on :8080 inside the cluster (they contain only
   aggregate counts); `--metrics-secure` enables HTTPS with Kubernetes authn/authz.
-- Supported Kubernetes: built against client-go 0.37 (Kubernetes 1.37), tested with envtest
-  1.37 and kind 1.34. Expected to work on 1.32 and newer; the minimum will be confirmed in CI.
+- Supported Kubernetes: **1.31 to 1.37**. Built against client-go 0.37. Verified on
+  2026-10-30: full e2e on kind 1.31.12, 1.32.8, 1.33.4 and 1.34.0; CRD schema tests on
+  envtest 1.31, 1.32, 1.33 and 1.37. Older versions are not tested. Managed clusters (EKS,
+  GKE, AKS) are not tested yet.

@@ -79,6 +79,8 @@ KIND_CLUSTER ?= clustersentinel-test-e2e
 # kind clusters use their own kubeconfig files so that these targets never read or change
 # ~/.kube/config and can never reach a cluster other than the local kind one.
 KIND_E2E_KUBECONFIG ?= $(LOCALBIN)/kind-e2e.kubeconfig
+# Node image for the e2e cluster, e.g. kindest/node:v1.32.8 (empty = kind's default).
+KIND_NODE_IMAGE ?=
 
 .PHONY: setup-test-e2e
 setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
@@ -91,7 +93,8 @@ setup-test-e2e: ## Set up a Kind cluster for e2e tests if it does not exist
 			echo "Kind cluster '$(KIND_CLUSTER)' already exists. Skipping creation." ;; \
 		*) \
 			echo "Creating Kind cluster '$(KIND_CLUSTER)'..."; \
-			$(KIND) create cluster --name $(KIND_CLUSTER) --kubeconfig $(KIND_E2E_KUBECONFIG) ;; \
+			$(KIND) create cluster --name $(KIND_CLUSTER) --kubeconfig $(KIND_E2E_KUBECONFIG) \
+				$(if $(KIND_NODE_IMAGE),--image $(KIND_NODE_IMAGE)) ;; \
 	esac
 	@$(KIND) export kubeconfig --name $(KIND_CLUSTER) --kubeconfig $(KIND_E2E_KUBECONFIG)
 
