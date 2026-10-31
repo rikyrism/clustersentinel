@@ -23,4 +23,4 @@ spec:
   description: Container "worker" runs with privileged access to the node.
   evidence: spec.template.spec.containers[worker].securityContext.privileged=true
   recommendation: Set securityContext.privileged to false if the application does not need host-level access.
-  documentationURL: https://github.com/rikyrism/clustersentinel/blob/main/docs/security-rules.md#cs-container-001
+  documentationURL: https://clustersentinel.rikyrism.my.id/docs/#cs-container-001
