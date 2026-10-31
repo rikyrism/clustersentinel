@@ -15,7 +15,8 @@ limitations under the License.
 */
 
 // Package controller holds the controllers that watch workloads, Pods, RBAC objects and
-// namespaces, run the rules against them and hand the results to a Recorder.
+// namespaces, run the rules against them and hand the results to a Recorder, which
+// writes them as SecurityFindings.
 package controller
 
 import (
@@ -110,10 +111,16 @@ func (s *Scanner) done() (ctrl.Result, error) {
 	return ctrl.Result{RequeueAfter: wait.Jitter(s.Rescan, 0.1)}, nil
 }
 
-// forget drops key and ends the reconcile without a rescan: there is nothing left to scan.
+// forget ends the reconcile of a unit that still exists but is no longer analyzed: its
+// findings are resolved. There is no rescan: there is nothing left to scan.
 func (s *Scanner) forget(ctx context.Context, key string) (ctrl.Result, error) {
-	s.Recorder.Forget(ctx, key)
-	return ctrl.Result{}, nil
+	return ctrl.Result{}, s.Recorder.Forget(ctx, key, false)
+}
+
+// gone ends the reconcile of a deleted (or deleting) object. Kubernetes deletes its
+// findings through their owner reference.
+func (s *Scanner) gone(ctx context.Context, key string) (ctrl.Result, error) {
+	return ctrl.Result{}, s.Recorder.Forget(ctx, key, true)
 }
 
 // serviceAccount returns a ServiceAccount, or nil when it does not exist. It is only read
