@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="ClusterSentinel">
+  <rect width="64" height="64" fill="#111111"/>
+  <path d="M32 9 L51 16 V31 C51 43 43 51 32 55 C21 51 13 43 13 31 V16 Z" fill="none" stroke="#fafaf8" stroke-width="5"/>
+  <path d="M23 32 L30 39 L42 25" fill="none" stroke="#e61919" stroke-width="6" stroke-linecap="square"/>
+</svg>
