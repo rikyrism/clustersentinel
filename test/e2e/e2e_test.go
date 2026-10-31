@@ -78,6 +78,16 @@ func lastAnalysis(g Gomega, pod, kind, resNamespace, name string) *analysisLog {
 	return last
 }
 
+// findingStates returns the state of each SecurityFinding of a rule on a resource, as
+// "<rule>=<state>" sorted by kubectl's output order.
+func findingStates(g Gomega, findingNamespace, ruleID, resourceName string) []string {
+	out, err := kubectl("get", "securityfindings", "-n", findingNamespace,
+		"-l", "security.clustersentinel.io/rule-id="+ruleID, "-o",
+		`jsonpath={range .items[?(@.spec.resource.name=="`+resourceName+`")]}{.spec.ruleID}={.status.state}{"\n"}{end}`)
+	g.Expect(err).NotTo(HaveOccurred())
+	return strings.Fields(out)
+}
+
 const workloadsNamespace = "e2e-workloads"
 
 // webDeployment renders a Deployment; insecure adds a privileged container on a latest image.
@@ -232,18 +242,37 @@ var _ = Describe("Manager", Ordered, func() {
 				g.Expect(l.Rules).To(ContainElements("CS-CONTAINER-001/app", "CS-CONTAINER-002/app", "CS-IMAGE-001/app"))
 			}).Should(Succeed())
 
+			By("writing a SecurityFinding owned by the Deployment")
+			Eventually(func(g Gomega) {
+				g.Expect(findingStates(g, workloadsNamespace, "CS-CONTAINER-001", "web")).To(Equal([]string{"CS-CONTAINER-001=Open"}))
+			}).Should(Succeed())
+			out, err := kubectl("get", "securityfindings", "-n", workloadsNamespace,
+				"-l", "security.clustersentinel.io/rule-id=CS-CONTAINER-001", "-o", "jsonpath={.items[0].metadata.ownerReferences[0].kind}")
+			Expect(err).NotTo(HaveOccurred())
+			Expect(out).To(Equal("Deployment"))
+
 			Expect(kubectlApply(webDeployment(false))).To(Succeed())
 			Eventually(func(g Gomega) {
 				l := lastAnalysis(g, controllerPodName, "Deployment", workloadsNamespace, "web")
 				g.Expect(l).NotTo(BeNil())
 				g.Expect(l.Violations).To(BeZero(), "rules still reported: %v", l.Rules)
 			}).Should(Succeed())
+			Eventually(func(g Gomega) {
+				g.Expect(findingStates(g, workloadsNamespace, "CS-CONTAINER-001", "web")).To(Equal([]string{"CS-CONTAINER-001=Resolved"}))
+			}).Should(Succeed())
 
 			By("analyzing the template, not each replica")
-			out, err := kubectl("logs", controllerPodName, "-n", namespace)
+			out, err = kubectl("logs", controllerPodName, "-n", namespace)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(out).NotTo(ContainSubstring(`"resourceKind":"Pod","resourceNamespace":"` + workloadsNamespace))
 			Expect(out).NotTo(ContainSubstring(`"resourceKind":"ReplicaSet","resourceNamespace":"` + workloadsNamespace))
+
+			By("deleting the findings with the Deployment")
+			_, err = kubectl("delete", "deployment", "web", "-n", workloadsNamespace)
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(findingStates(g, workloadsNamespace, "CS-CONTAINER-001", "web")).To(BeEmpty())
+			}).Should(Succeed())
 		})
 
 		It("detects a cluster-admin binding and ignores the installer's admin group", func() {
@@ -258,6 +287,28 @@ var _ = Describe("Manager", Ordered, func() {
 			out, err := kubectl("logs", controllerPodName, "-n", namespace)
 			Expect(err).NotTo(HaveOccurred())
 			Expect(out).NotTo(ContainSubstring(`"resourceName":"kubeadm:cluster-admins"`))
+
+			By("keeping findings about cluster-scoped objects in the operator namespace")
+			Eventually(func(g Gomega) {
+				g.Expect(findingStates(g, namespace, "CS-RBAC-002", "e2e-ci-admin")).To(Equal([]string{"CS-RBAC-002=Open"}))
+			}).Should(Succeed())
+			_, err = kubectl("delete", "clusterrolebinding", "e2e-ci-admin")
+			Expect(err).NotTo(HaveOccurred())
+			Eventually(func(g Gomega) {
+				g.Expect(findingStates(g, namespace, "CS-RBAC-002", "e2e-ci-admin")).To(BeEmpty())
+			}).Should(Succeed())
+		})
+
+		It("summarizes the cluster in the SecurityReport", func() {
+			Eventually(func(g Gomega) {
+				out, err := kubectl("get", "securityreport", "cluster", "-n", namespace, "-o",
+					`jsonpath={.status.conditions[?(@.type=="ScannerHealthy")].status} {.status.scannedResources}`)
+				g.Expect(err).NotTo(HaveOccurred())
+				fields := strings.Fields(out)
+				g.Expect(fields).To(HaveLen(2))
+				g.Expect(fields[0]).To(Equal("True"))
+				g.Expect(fields[1]).NotTo(Equal("0"))
+			}, 2*time.Minute).Should(Succeed())
 		})
 	})
 })
