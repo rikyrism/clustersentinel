@@ -148,15 +148,30 @@ func main() {
 	ctx := ctrl.SetupSignalHandler()
 	settings := cfg.Scanner.RuleSettings()
 	setupLog.Info("Rules enabled", "rules", settings.EnabledIDs())
+	rescan := cfg.Scanner.ScanInterval.Duration
+	recorder := controller.NewFindingRecorder(mgr.GetClient(), mgr.GetAPIReader(), operatorNamespace, rescan)
 	if err := controller.Setup(ctx, mgr, &controller.Scanner{
 		Client:                  mgr.GetClient(),
-		Recorder:                controller.NewLogRecorder(),
+		Recorder:                recorder,
 		Namespaces:              cfg.Scanner.Namespaces,
 		Settings:                settings,
-		Rescan:                  cfg.Scanner.ScanInterval.Duration,
+		Rescan:                  rescan,
 		MaxConcurrentReconciles: cfg.Scanner.MaxConcurrentReconciles,
 	}); err != nil {
 		setupLog.Error(err, "Failed to set up controllers")
+		os.Exit(1)
+	}
+	if err := mgr.Add(&controller.Janitor{
+		Client:     mgr.GetClient(),
+		Reader:     mgr.GetAPIReader(),
+		Namespace:  operatorNamespace,
+		Settings:   settings,
+		Namespaces: cfg.Scanner.Namespaces,
+		Retention:  cfg.Scanner.ResolvedRetention.Duration,
+		Rescan:     rescan,
+		Recorder:   recorder,
+	}); err != nil {
+		setupLog.Error(err, "Failed to set up the report")
 		os.Exit(1)
 	}
 	// +kubebuilder:scaffold:builder
