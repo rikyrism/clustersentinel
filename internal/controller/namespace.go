@@ -64,11 +64,14 @@ func (r *namespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 	ns := &corev1.Namespace{}
 	if err := r.Client.Get(ctx, req.NamespacedName, ns); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.forget(ctx, key)
+			return r.gone(ctx, key)
 		}
 		return ctrl.Result{}, err
 	}
-	if !ns.DeletionTimestamp.IsZero() || !r.Namespaces.NamespaceSelected(ns.Name) {
+	if !ns.DeletionTimestamp.IsZero() {
+		return r.gone(ctx, key)
+	}
+	if !r.Namespaces.NamespaceSelected(ns.Name) {
 		return r.forget(ctx, key)
 	}
 	// Only the counts matter: skip the deep copy of every cached Pod.
@@ -81,6 +84,8 @@ func (r *namespaceReconciler) Reconcile(ctx context.Context, req ctrl.Request) (
 		return ctrl.Result{}, err
 	}
 	vs := rules.EvaluateNamespace(len(pods.Items) > 0, len(policies.Items) > 0, r.Settings)
-	r.Recorder.Record(ctx, key, affected("v1", "Namespace", ns), vs)
+	if err := r.Recorder.Record(ctx, key, affected("v1", "Namespace", ns), vs); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
