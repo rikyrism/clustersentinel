@@ -3,7 +3,7 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
-  "description": "Landing page, docs and roadmap for ClusterSentinel, published to clustersentinel.rikyrism.my.id",
+  "description": "Landing page, docs and roadmap for ClusterSentinel, published to clustersentinel.web.id",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
