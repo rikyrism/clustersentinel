@@ -18,10 +18,10 @@ const CASES = [
       <>
         Install it once and the first scan lists every privileged container, every workload on the host network,
         every <code>latest</code> image and every subject bound to <code>cluster-admin</code>, across all
-        namespaces, on its first scan. Nothing is changed while it looks.
+        namespaces, as findings you can read with kubectl. Nothing is changed while it looks.
       </>
     ),
-    plans: ['Phase 3: browse results with kubectl get securityfindings'],
+    plans: ['Phase 5: a summary per namespace with the CLI'],
     visual: (
       <div className="uc-window">
         <div className="window-bar" aria-hidden="true"><i /><i /><i /><span>kubectl logs · first scan</span></div>
@@ -45,9 +45,9 @@ const CASES = [
     title: 'Forty teams deploy with Helm and Argo CD. You want to know when a chart gets worse.',
     text: (
       <>
-        Results are fingerprinted, so the log only speaks when something changes: a new chart version that adds{' '}
+        Results are fingerprinted, so findings only change when the workload does: a new chart version that adds{' '}
         <code>privileged: true</code>, an image switched to <code>latest</code>, a Role that grows a wildcard. When
-        the team fixes it, the result changes back to zero.
+        the team fixes it, the findings turn Resolved.
       </>
     ),
     plans: ['Phase 4: per-namespace policy', 'Phase 6: Slack, Discord or webhook alerts'],
@@ -57,7 +57,7 @@ const CASES = [
           <span className="t">14:02</span>
           <div>
             <strong>helm upgrade checkout 2.3.0</strong>
-            <p>violations 0 → 2</p>
+            <p>2 findings Open</p>
             <div className="uc-tags"><Severity level="CRITICAL" /><code>CS-CONTAINER-001/app</code></div>
             <div className="uc-tags"><Severity level="MEDIUM" /><code>CS-IMAGE-001/app</code></div>
           </div>
@@ -66,14 +66,14 @@ const CASES = [
           <span className="t">14:31</span>
           <div>
             <strong>helm upgrade checkout 2.3.1</strong>
-            <p>violations 2 → 0</p>
+            <p>2 findings Resolved</p>
           </div>
         </div>
         <div className="uc-event quiet">
           <span className="t">every 30m</span>
           <div>
             <strong>rescan from cache</strong>
-            <p>nothing changed, nothing logged</p>
+            <p>nothing changed, nothing written</p>
           </div>
         </div>
       </div>
@@ -91,10 +91,10 @@ const CASES = [
         NetworkPolicy. Read-only access means the security team can run it without change approval for workloads.
       </>
     ),
-    plans: ['Phase 3: cluster SecurityReport', 'Phase 5: report as JSON or YAML'],
+    plans: ['Phase 5: report as JSON or YAML'],
     visual: (
       <div className="uc-report">
-        <div className="uc-report-head"><span className="label">SecurityReport · planned</span><strong>prod-eks</strong></div>
+        <div className="uc-report-head"><span className="label">SecurityReport · cluster</span><strong>prod-eks</strong></div>
         <div className="uc-bars">
           {[['CRITICAL', 2, 8], ['HIGH', 9, 30], ['MEDIUM', 21, 64], ['LOW', 37, 100]].map(([sev, n, w]) => (
             <div key={sev} className="uc-bar">
