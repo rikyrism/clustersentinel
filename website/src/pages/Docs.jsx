@@ -6,7 +6,7 @@ import { PHASES, PHASES_DONE, REPO } from '../data/site.js'
 
 const TOC = [
   ['Getting started', [['overview', 'Overview'], ['status', 'Status'], ['quick-start', 'Install'], ['production', 'Production'], ['local', 'Try it locally']]],
-  ['Concepts', [['how-it-works', 'How it works'], ['templates', 'Templates and Pods'], ['profiles', 'Profiles']]],
+  ['Concepts', [['how-it-works', 'How it works'], ['findings', 'Findings'], ['templates', 'Templates and Pods'], ['profiles', 'Profiles']]],
   ['Reference', [['configuration', 'Configuration'], ['rules', 'Rules'], ['security-model', 'Security model'],
     ['resources', 'Resource usage']]],
   ['Project', [['limitations', 'Limitations'], ['development', 'Development']]],
@@ -21,7 +21,7 @@ const CONFIG = [
   ['scanner.namespaces.include', 'empty (all)', 'Only these namespaces are cached and analyzed.'],
   ['scanner.namespaces.exclude', '[kube-system]', <>Never transferred or cached: the API server filters them with a field selector. Wins over <code>include</code>.</>],
   ['scanner.maxConcurrentReconciles', '2', 'Parallel reconciles per controller, 1 to 16.'],
-  ['scanner.resolvedRetention', '168h', 'How long Resolved findings are kept. Used from Phase 3.'],
+  ['scanner.resolvedRetention', '168h', <>How long Resolved findings are kept before they are deleted. <code>0</code> keeps them until their resource is deleted.</>],
   ['notifications.channels', 'empty', 'Discord, Slack or webhook channels. Validated today, sent from Phase 6.'],
 ]
 
@@ -78,6 +78,12 @@ const CONFIGMAP_EXAMPLE = `# kubectl -n clustersentinel-system create configmap 
         - name: config
           configMap:
             name: clustersentinel-config`
+
+const FINDINGS_EXAMPLE = `NAMESPACE   NAME                                       SEVERITY   RULE               KIND         RESOURCE   STATE
+shop        deployment-api-cs-container-001-126beb6f   CRITICAL   CS-CONTAINER-001   Deployment   api        Open
+shop        deployment-api-cs-container-002-1726c4ca   HIGH       CS-CONTAINER-002   Deployment   api        Open
+shop        deployment-api-cs-image-001-344e7fa9       MEDIUM     CS-IMAGE-001       Deployment   api        Open
+…`
 
 const LOG_EXAMPLE = `{"msg":"Analysis result changed","resourceKind":"Pod","resourceNamespace":"demo",
  "resourceName":"debug","violations":8,"rules":["CS-CONTAINER-001/debug", ...]}`
@@ -160,9 +166,9 @@ export default function Docs() {
               Phase {PHASES_DONE} of {PHASES.length} is complete. This page documents what exists today and marks what is planned.
             </Notice>
             <ul>
-              <li><strong>Works now:</strong> all {rules.length} rules, the controllers, namespace filtering, profiles and rule toggles in the operator configuration, periodic rescan. Results are written to the operator log when they change.</li>
-              <li><strong>Phase 3:</strong> results become <code>SecurityFinding</code> resources, with automatic resolution and retention, and a cluster <code>SecurityReport</code>.</li>
-              <li><strong>Later:</strong> per-namespace <code>SecurityPolicy</code>, the CLI, notifications, metrics and a Helm chart. See the <a href="/roadmap/">roadmap</a>.</li>
+              <li><strong>Works now:</strong> all {rules.length} rules, the controllers, namespace filtering, profiles and rule toggles in the operator configuration, periodic rescan, <code>SecurityFinding</code> resources that resolve themselves, retention, and a cluster <code>SecurityReport</code>.</li>
+              <li><strong>Next:</strong> per-namespace <code>SecurityPolicy</code> (Phase 4).</li>
+              <li><strong>Later:</strong> the CLI, notifications, metrics and a Helm chart. See the <a href="/roadmap/">roadmap</a>.</li>
             </ul>
           </section>
 
@@ -191,13 +197,16 @@ export default function Docs() {
                 ['kubectl -n clustersentinel-system rollout status deploy/clustersentinel-controller-manager'],
               ]}
             />
-            <p>Then watch the first scan. Each result is one JSON line, written when it changes:</p>
+            <p>Then read what the first scan found:</p>
             <Shell
               lines={[
-                ['kubectl -n clustersentinel-system logs deploy/clustersentinel-controller-manager | grep "Analysis result"'],
+                ['kubectl get securityfindings -A', 'one finding per workload, rule and container'],
+                ['kubectl get securityfindings -A -l security.clustersentinel.io/severity=CRITICAL'],
+                ['kubectl -n clustersentinel-system get securityreport cluster', 'counts, updated at most once a minute'],
               ]}
             />
-            <pre><code>{LOG_EXAMPLE}</code></pre>
+            <pre><code>{FINDINGS_EXAMPLE}</code></pre>
+            <p>See <a href="#findings">Findings</a> for what each field means and when findings change.</p>
             <ul>
               <li><strong>Review before applying.</strong> <code>dist/install.yaml</code> is plain YAML: one namespace, the CRDs, a read-only ClusterRole (see <a href="#security-model">Security model</a>) and one Deployment.</li>
               <li><strong>Private registry.</strong> On EKS, nodes pull from ECR in the same account with their node role. Elsewhere, add an <code>imagePullSecret</code> to the Deployment.</li>
@@ -218,13 +227,14 @@ export default function Docs() {
               ]}
             />
 
-            <h3>Send the results to your log stack</h3>
+            <h3>Get alerted until notifications arrive</h3>
             <p>
-              Until findings become resources in Phase 3, the log is the result. It is structured JSON on stdout, so
-              whatever already collects your pod logs picks it up: CloudWatch with Fluent Bit, Loki, Elasticsearch or
-              Datadog. Filter on <code>msg</code> and alert on new <code>CRITICAL</code> or <code>HIGH</code> rules.
+              Built-in Discord, Slack and webhook alerts come in Phase 6. Until then, every changed result is also
+              one structured JSON line on stdout, so whatever already collects your pod logs can alert on it:
+              CloudWatch with Fluent Bit, Loki, Elasticsearch or Datadog.
             </p>
             <pre><code>{LOKI_EXAMPLE}</code></pre>
+            <pre><code>{LOG_EXAMPLE}</code></pre>
 
             <h3>Tune what it looks at</h3>
             <ul>
@@ -266,12 +276,63 @@ export default function Docs() {
             <ol>
               <li><strong>Watch.</strong> Controllers watch each audited resource type through a shared informer cache. The cache drops <code>managedFields</code> and <code>last-applied-configuration</code>, keeps only metadata for replica Pods, and never holds Secrets or ConfigMaps.</li>
               <li><strong>Evaluate.</strong> An object is analyzed when its spec changes (<code>metadata.generation</code>) or its controller changes. Status updates, which are most updates, are ignored.</li>
-              <li><strong>Record.</strong> Each result is fingerprinted. If it did not change, nothing happens.</li>
+              <li><strong>Record.</strong> Each result is fingerprinted. If it did not change, nothing happens. Otherwise its findings are created, updated or resolved; see <a href="#findings">Findings</a>.</li>
               <li><strong>Rescan.</strong> Every <code>scanInterval</code> (default 30 minutes, with 10% jitter) every object is analyzed again from the cache, as a safety net. This makes no extra calls to the API server.</li>
             </ol>
             <p>
               Controllers whose rules are all disabled are not started, so their objects are never loaded. With the
               default profile, NetworkPolicies are not watched at all.
+            </p>
+          </section>
+
+          <section id="findings">
+            <h2>Findings</h2>
+            <p>
+              Each violation is one <code>SecurityFinding</code>: one per resource, rule and container, never one per
+              replica. Its <code>spec</code> holds the rule, the severity, the affected resource, the evidence (the exact
+              field), the recommendation and a link to the rule here. Its <code>status</code> holds the state and when
+              it was first and last detected.
+            </p>
+            <h3>Lifecycle</h3>
+            <ul>
+              <li><strong>Open</strong> while the issue is present. <code>lastDetectedAt</code> is refreshed at most once per <code>scanInterval</code>, to keep writes low.</li>
+              <li><strong>Resolved</strong> as soon as a scan no longer finds it, or when the resource leaves the scan scope (a ReplicaSet scaled to zero, a Pod adopted by a controller). If the issue comes back, the same finding reopens and keeps its <code>firstDetectedAt</code>.</li>
+              <li><strong>Deleted</strong> together with its resource: every finding has an owner reference, so Kubernetes removes it even when the operator is not running. Resolved findings are deleted after <code>scanner.resolvedRetention</code> (7 days by default).</li>
+            </ul>
+            <p>
+              Names are deterministic (<code>&lt;kind&gt;-&lt;name&gt;-&lt;rule&gt;-&lt;hash&gt;</code>, the hash covering the
+              resource UID, rule and container), so a rescan updates a finding instead of creating a new one, and a
+              deleted and recreated workload never inherits old findings. An unchanged result writes nothing, also
+              after the operator restarts.
+            </p>
+            <h3>Where they live</h3>
+            <ul>
+              <li>Findings about workloads, Pods, Roles and RoleBindings: in the same namespace.</li>
+              <li>The missing NetworkPolicy finding: in the namespace it is about.</li>
+              <li>Findings about ClusterRoles and ClusterRoleBindings: in the operator&apos;s namespace.</li>
+            </ul>
+            <h3>Labels</h3>
+            <Table
+              head={['Label', 'Value']}
+              rows={[
+                [<code key="r">security.clustersentinel.io/rule-id</code>, <code key="v">CS-CONTAINER-001</code>],
+                [<code key="r">security.clustersentinel.io/severity</code>, <><code>CRITICAL</code>, <code>HIGH</code>, <code>MEDIUM</code>, <code>LOW</code>, <code>INFO</code></>],
+                [<code key="r">security.clustersentinel.io/state</code>, <><code>Open</code> or <code>Resolved</code></>],
+                [<code key="r">security.clustersentinel.io/resource-kind</code>, <code key="v">Deployment</code>],
+                [<code key="r">security.clustersentinel.io/resource-uid</code>, 'UID of the affected object'],
+              ]}
+            />
+            <h3>Cluster report</h3>
+            <p>
+              One <code>SecurityReport</code> named <code>cluster</code>, in the operator&apos;s namespace, counts open
+              findings per severity, resolved findings still kept and analyzed resources. Its{' '}
+              <code>ScannerHealthy</code> condition turns <code>False</code> when findings could not be written. It is
+              written at most once a minute, and only when something in it changed.
+            </p>
+            <p>
+              The operator only counts, resolves and deletes findings it created (label{' '}
+              <code>app.kubernetes.io/managed-by: clustersentinel</code>). Edits to a finding&apos;s spec are overwritten
+              on the next change.
             </p>
           </section>
 
@@ -377,7 +438,7 @@ export default function Docs() {
           <section id="limitations">
             <h2>Limitations</h2>
             <ul>
-              <li>Pre-alpha: results are only logged; findings, the CLI, notifications and the Helm chart do not exist yet.</li>
+              <li>Pre-alpha: the per-namespace <code>SecurityPolicy</code>, the CLI, notifications and the Helm chart do not exist yet.</li>
               <li><code>SecurityPolicy</code> objects are not read yet: the operator-wide profile applies to every namespace.</li>
               <li>Tested on Kubernetes 1.31 to 1.34 (kind, end to end) and 1.37 (envtest). Not yet tested on managed clusters such as EKS, GKE or AKS.</li>
               <li>Pod changes that do not bump <code>metadata.generation</code> are picked up by the next rescan.</li>
