@@ -1,0 +1,241 @@
+[
+  {
+    "id": "CS-CONTAINER-001",
+    "key": "privilegedContainer",
+    "name": "Privileged container",
+    "scope": "Workload",
+    "severity": "CRITICAL",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "A privileged container has every capability and access to the host's devices. Escaping to the node is trivial.",
+    "recommendation": "Remove securityContext.privileged, or set it to false. Grant only the specific capabilities the container needs."
+  },
+  {
+    "id": "CS-CONTAINER-002",
+    "key": "allowPrivilegeEscalation",
+    "name": "Privilege escalation allowed",
+    "scope": "Workload",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "Without allowPrivilegeEscalation: false, a process can gain more privileges than its parent, for example through setuid binaries.",
+    "recommendation": "Set securityContext.allowPrivilegeEscalation: false on every container."
+  },
+  {
+    "id": "CS-CONTAINER-003",
+    "key": "runAsRoot",
+    "name": "Container may run as root",
+    "scope": "Workload",
+    "severity": "MEDIUM",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "A container running as UID 0 is root inside the container, and much closer to root on the node if it escapes.",
+    "recommendation": "Set securityContext.runAsNonRoot: true and a non-zero runAsUser, on the pod or on each container, and use an image that runs as a non-root user."
+  },
+  {
+    "id": "CS-CONTAINER-004",
+    "key": "readOnlyRootFilesystem",
+    "name": "Writable root filesystem",
+    "scope": "Workload",
+    "severity": "LOW",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "A writable root filesystem lets an attacker modify binaries and drop tools inside the container.",
+    "recommendation": "Set securityContext.readOnlyRootFilesystem: true and mount an emptyDir for paths the application must write to, such as /tmp."
+  },
+  {
+    "id": "CS-CONTAINER-005",
+    "key": "dropCapabilities",
+    "name": "Linux capabilities not dropped",
+    "scope": "Workload",
+    "severity": "LOW",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "Containers start with a default set of Linux capabilities that most applications never use.",
+    "recommendation": "Set securityContext.capabilities.drop: [\"ALL\"] and add back only what the container needs, such as NET_BIND_SERVICE."
+  },
+  {
+    "id": "CS-CONTAINER-006",
+    "key": "dangerousCapabilities",
+    "name": "Dangerous Linux capabilities added",
+    "scope": "Workload",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "Capabilities such as SYS_ADMIN, NET_ADMIN or SYS_PTRACE give control over the host kernel, the network or other processes.",
+    "recommendation": "Remove these capabilities from securityContext.capabilities.add. If one is truly needed, isolate the workload on dedicated nodes."
+  },
+  {
+    "id": "CS-CONTAINER-007",
+    "key": "seccompProfile",
+    "name": "Missing seccomp profile",
+    "scope": "Workload",
+    "severity": "LOW",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "Without a seccomp profile, a container can make any system call, which widens the kernel attack surface.",
+    "recommendation": "Set securityContext.seccompProfile.type: RuntimeDefault on the pod."
+  },
+  {
+    "id": "CS-CONTAINER-008",
+    "key": "hostNetwork",
+    "name": "Host network enabled",
+    "scope": "Workload",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "A pod on the host network sees every interface of the node and can reach services bound to localhost on it.",
+    "recommendation": "Remove hostNetwork: true. Expose the pod through a Service instead."
+  },
+  {
+    "id": "CS-CONTAINER-009",
+    "key": "hostPID",
+    "name": "Host PID namespace enabled",
+    "scope": "Workload",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "A pod in the host PID namespace can see, and possibly signal or trace, every process on the node.",
+    "recommendation": "Remove hostPID: true."
+  },
+  {
+    "id": "CS-CONTAINER-010",
+    "key": "hostIPC",
+    "name": "Host IPC namespace enabled",
+    "scope": "Workload",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "A pod in the host IPC namespace can read and write the shared memory of every process on the node.",
+    "recommendation": "Remove hostIPC: true."
+  },
+  {
+    "id": "CS-IMAGE-001",
+    "key": "latestImageTag",
+    "name": "Image uses the latest tag",
+    "scope": "Workload",
+    "severity": "MEDIUM",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "The latest tag changes over time, so the same manifest can run different code after a restart, and rollbacks are unreliable.",
+    "recommendation": "Use an explicit version tag, or better, pin the image by digest (image@sha256:...)."
+  },
+  {
+    "id": "CS-IMAGE-002",
+    "key": "implicitImageTag",
+    "name": "Image has no tag",
+    "scope": "Workload",
+    "severity": "MEDIUM",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "An image without a tag pulls latest, with the same problems as an explicit latest tag.",
+    "recommendation": "Add an explicit version tag, or pin the image by digest (image@sha256:...)."
+  },
+  {
+    "id": "CS-SA-001",
+    "key": "serviceAccountToken",
+    "name": "Service account token automounted",
+    "scope": "Workload",
+    "severity": "LOW",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "An automounted API token lets anyone who compromises the container talk to the Kubernetes API with the ServiceAccount's permissions.",
+    "recommendation": "Set automountServiceAccountToken: false on the pod or the ServiceAccount, unless the application calls the Kubernetes API."
+  },
+  {
+    "id": "CS-SA-002",
+    "key": "defaultServiceAccount",
+    "name": "Workload uses the default ServiceAccount",
+    "scope": "Workload",
+    "severity": "INFO",
+    "profiles": [
+      "strict"
+    ],
+    "description": "Workloads sharing the default ServiceAccount share its permissions, and any permission granted to it reaches all of them.",
+    "recommendation": "Create a dedicated ServiceAccount for the workload and set spec.serviceAccountName."
+  },
+  {
+    "id": "CS-RBAC-001",
+    "key": "wildcardRBAC",
+    "name": "Wildcard RBAC permissions",
+    "scope": "RBAC",
+    "severity": "HIGH",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "A wildcard verb or resource grants every current and future permission in scope, including ones added by new API versions and CRDs.",
+    "recommendation": "List the exact verbs and resources the subject needs instead of \"*\"."
+  },
+  {
+    "id": "CS-RBAC-002",
+    "key": "clusterAdminBinding",
+    "name": "cluster-admin bound to a subject",
+    "scope": "RBAC",
+    "severity": "HIGH",
+    "profiles": [
+      "basic",
+      "recommended",
+      "strict"
+    ],
+    "description": "cluster-admin can do anything in the cluster. A compromised subject bound to it compromises the whole cluster.",
+    "recommendation": "Bind a narrower ClusterRole or a namespaced Role that grants only what the subject needs."
+  },
+  {
+    "id": "CS-RBAC-003",
+    "key": "broadRBAC",
+    "name": "Broad sensitive permissions",
+    "scope": "RBAC",
+    "severity": "MEDIUM",
+    "profiles": [
+      "recommended",
+      "strict"
+    ],
+    "description": "Reading Secrets, executing into Pods, proxying to nodes, minting tokens, impersonating or escalating can each lead to more access than the role appears to grant.",
+    "recommendation": "Remove the permission, or restrict it with resourceNames to the specific objects needed."
+  },
+  {
+    "id": "CS-NETWORK-001",
+    "key": "missingNetworkPolicy",
+    "name": "Namespace has no NetworkPolicy",
+    "scope": "Namespace",
+    "severity": "LOW",
+    "profiles": [
+      "strict"
+    ],
+    "description": "Without a NetworkPolicy, every Pod in the namespace accepts traffic from every Pod in the cluster.",
+    "recommendation": "Add a default-deny NetworkPolicy to the namespace and allow the traffic each workload needs. This only has an effect if the CNI plugin enforces NetworkPolicy."
+  }
+]
