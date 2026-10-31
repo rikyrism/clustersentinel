@@ -158,6 +158,9 @@ export default function Docs() {
               It is <strong>read-only</strong>: it can list and watch what it audits, it cannot modify any of it, and it
               cannot read Secrets. It runs as one pod with no node agent and no database.
             </p>
+            <p>
+              Source code, issues and releases: <a href={REPO}>{REPO.replace('https://', '')}</a>.
+            </p>
           </section>
 
           <section id="status">
