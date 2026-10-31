@@ -1,9 +1,10 @@
 import Example from '../components/Example.jsx'
+import { GitHubMark } from '../components/GitHubStars.jsx'
 import Layout from '../components/Layout.jsx'
 import UseCases from '../components/UseCases.jsx'
 import { Backdrop, BlockHead, Notice, Progress, Severity, Shell } from '../components/ui.jsx'
 import rules from '../data/rules.json'
-import { PHASES, PHASES_DONE } from '../data/site.js'
+import { PHASES, PHASES_DONE, REPO } from '../data/site.js'
 
 const WHY = [
   ['Read-only', 'It cannot change your workloads',
@@ -98,6 +99,7 @@ export default function Home() {
             <div className="actions">
               <a className="btn primary" href="#install">Install on your cluster</a>
               <a className="btn" href="#use-cases">Real use cases</a>
+              <a className="btn" href={REPO}><GitHubMark /> View on GitHub</a>
             </div>
           </div>
           <HeroVisual />
@@ -277,7 +279,10 @@ export default function Home() {
             Next: {next.title.toLowerCase()}. {next.summary}
           </BlockHead>
           <Progress />
-          <div className="actions"><a className="btn" href="/roadmap/">See the full roadmap</a></div>
+          <div className="actions">
+            <a className="btn" href="/roadmap/">See the full roadmap</a>
+            <a className="btn" href={REPO}><GitHubMark /> Star or follow on GitHub</a>
+          </div>
         </div>
       </section>
     </Layout>
