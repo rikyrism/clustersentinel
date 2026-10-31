@@ -20,7 +20,9 @@ import (
 	"context"
 	"hash/fnv"
 	"sync"
+	"time"
 
+	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
 	securityv1alpha1 "github.com/rikyrism/clustersentinel/api/v1alpha1"
@@ -28,39 +30,79 @@ import (
 )
 
 // Recorder receives the result of every analysis. Keys are stable per analyzed unit
-// (for example "Deployment/app/web"); a key is forgotten when its unit disappears or
-// leaves the scan scope.
+// (for example "Deployment/app/web").
 type Recorder interface {
-	Record(ctx context.Context, key string, res securityv1alpha1.AffectedResource, violations []rules.Violation)
-	Forget(ctx context.Context, key string)
+	// Record stores the violations found on res. An error makes the reconcile retry.
+	Record(ctx context.Context, key string, res securityv1alpha1.AffectedResource, violations []rules.Violation) error
+	// Forget is called when a unit is no longer analyzed. deleted means its object is
+	// gone, so Kubernetes deletes its findings through their owner reference; otherwise
+	// (scaled to zero, adopted by another controller, out of scope) they are resolved.
+	Forget(ctx context.Context, key string, deleted bool) error
 }
 
-// LogRecorder logs analysis results when they change. It is the Phase 2 recorder; the
-// SecurityFinding writer replaces it in Phase 3 and keeps the same change detection, so
-// unchanged results never cause writes.
-type LogRecorder struct {
-	mu   sync.Mutex
-	last map[string]recorded
+// FindingRecorder writes analysis results as SecurityFindings. It remembers a fingerprint
+// of the last result per key, so an unchanged result causes no API call at all, except
+// for the lastDetectedAt refresh once per Refresh.
+type FindingRecorder struct {
+	// Client reads findings from the cache and writes them.
+	Client client.Client
+	// Reader reads from the API server, for a finding the cache has not seen yet.
+	Reader client.Reader
+	// Namespace receives findings about cluster-scoped objects other than namespaces.
+	Namespace string
+	// Refresh is how often lastDetectedAt of an unchanged finding is refreshed. Zero
+	// never refreshes it.
+	Refresh time.Duration
+
+	now func() time.Time
+
+	mu         sync.Mutex
+	last       map[string]recorded
+	lastRecord time.Time
+	failures   int
 }
 
 type recorded struct {
 	fingerprint uint64
+	synced      time.Time
 	violations  int
 }
 
-// NewLogRecorder returns an empty LogRecorder.
-func NewLogRecorder() *LogRecorder { return &LogRecorder{last: map[string]recorded{}} }
+// NewFindingRecorder returns a FindingRecorder with no remembered results.
+func NewFindingRecorder(c client.Client, reader client.Reader, namespace string, refresh time.Duration) *FindingRecorder {
+	return &FindingRecorder{
+		Client: c, Reader: reader, Namespace: namespace, Refresh: refresh, now: time.Now, last: map[string]recorded{},
+	}
+}
 
-// Record logs the result if it differs from the previous one for key. A first clean
-// result is logged at V(1) only, so a healthy cluster does not log every workload at start.
-func (r *LogRecorder) Record(ctx context.Context, key string, res securityv1alpha1.AffectedResource, vs []rules.Violation) {
+// Record writes the findings for key when its result changed or the refresh is due. A
+// changed result is also logged; a first clean result only at V(1), so a healthy cluster
+// does not log every workload at start.
+func (r *FindingRecorder) Record(ctx context.Context, key string, res securityv1alpha1.AffectedResource, vs []rules.Violation) error {
 	fp := fingerprint(res, vs)
+	now := r.now()
 	r.mu.Lock()
 	prev, seen := r.last[key]
-	r.last[key] = recorded{fingerprint: fp, violations: len(vs)}
 	r.mu.Unlock()
-	if seen && prev.fingerprint == fp {
-		return
+	unchanged := seen && prev.fingerprint == fp
+	if unchanged && (r.Refresh <= 0 || now.Sub(prev.synced) < r.Refresh) {
+		r.mu.Lock()
+		r.lastRecord = now
+		r.mu.Unlock()
+		return nil
+	}
+	if err := r.sync(ctx, key, res, vs, now); err != nil {
+		r.mu.Lock()
+		r.failures++
+		r.mu.Unlock()
+		return err
+	}
+	r.mu.Lock()
+	r.last[key] = recorded{fingerprint: fp, synced: now, violations: len(vs)}
+	r.lastRecord = now
+	r.mu.Unlock()
+	if unchanged {
+		return nil
 	}
 	logger := log.FromContext(ctx)
 	if !seen && len(vs) == 0 {
@@ -69,24 +111,46 @@ func (r *LogRecorder) Record(ctx context.Context, key string, res securityv1alph
 	logger.Info("Analysis result changed",
 		"resourceKind", res.Kind, "resourceNamespace", res.Namespace, "resourceName", res.Name,
 		"violations", len(vs), "rules", violationLabels(vs))
+	return nil
 }
 
-// Forget drops key, logging it when it still had violations.
-func (r *LogRecorder) Forget(ctx context.Context, key string) {
+// Forget drops key. Unless its object was deleted, its open findings are resolved; this
+// also runs for keys never seen in this process, so findings left by a previous run are
+// resolved too.
+func (r *FindingRecorder) Forget(ctx context.Context, key string, deleted bool) error {
 	r.mu.Lock()
 	prev, seen := r.last[key]
 	delete(r.last, key)
 	r.mu.Unlock()
-	if seen && prev.violations > 0 {
-		log.FromContext(ctx).Info("Resource no longer analyzed", "key", key)
+	if !deleted {
+		if err := r.resolveKey(ctx, key); err != nil {
+			r.mu.Lock()
+			r.failures++
+			r.mu.Unlock()
+			return err
+		}
 	}
+	if seen && prev.violations > 0 {
+		log.FromContext(ctx).Info("Resource no longer analyzed", "key", key, "deleted", deleted)
+	}
+	return nil
 }
 
 // Len returns the number of analyzed units.
-func (r *LogRecorder) Len() int {
+func (r *FindingRecorder) Len() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return len(r.last)
+}
+
+// takeStats returns when a result was last recorded and how many writes failed since the
+// previous call.
+func (r *FindingRecorder) takeStats() (lastRecord time.Time, failures int) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	lastRecord, failures = r.lastRecord, r.failures
+	r.failures = 0
+	return lastRecord, failures
 }
 
 // violationLabels renders violations as "CS-CONTAINER-001/app" (rule/container).
