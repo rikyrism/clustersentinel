@@ -17,7 +17,7 @@ export const PHASES = [
   {
     state: 'done',
     title: 'Workload scanning',
-    summary: 'Controllers and detection logic for all 18 rules. Results are logged.',
+    summary: 'Controllers and detection logic for all 18 rules.',
     items: [
       'Deployments, StatefulSets, DaemonSets, ReplicaSets, Jobs and CronJobs analyzed from their pod template',
       'Pods of unknown controllers grouped per controller, so 50 replicas give one result',
@@ -27,18 +27,19 @@ export const PHASES = [
     verified: 'unit tests for every rule, controller tests against a real API server, e2e detection on kind. 32 MB RSS on kind.',
   },
   {
-    state: 'next',
+    state: 'done',
     title: 'Findings',
-    summary: 'Turn results into SecurityFinding resources that live and die with the workload.',
+    summary: 'Results are SecurityFinding resources that live and die with the workload.',
     items: [
       'Deterministic names from resource UID, rule and container: rescans update, never duplicate',
-      'Findings move to Resolved on their own when the issue is fixed',
-      'Owner references, so findings are deleted with their workload',
-      'Retention for Resolved findings and one cluster SecurityReport',
+      'Findings move to Resolved on their own when the issue is fixed, and reopen if it comes back',
+      'Owner references, so Kubernetes deletes findings with their workload',
+      'Retention for Resolved findings and one cluster SecurityReport, written only when it changes',
     ],
+    verified: 'controller tests against a real API server, e2e on kind: findings created, resolved and garbage-collected. A restart rewrites no finding. 34 MB RSS.',
   },
   {
-    state: 'planned',
+    state: 'next',
     title: 'Configuration',
     summary: 'SecurityPolicy per namespace.',
     items: [
