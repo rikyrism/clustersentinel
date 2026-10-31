@@ -19,8 +19,8 @@
 </p>
 
 <p align="center">
-  <a href="https://clustersentinel.rikyrism.my.id">Website</a> ·
-  <a href="https://clustersentinel.rikyrism.my.id/docs/">Docs</a> ·
+  <a href="https://clustersentinel.web.id">Website</a> ·
+  <a href="https://clustersentinel.web.id/docs/">Docs</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#security-model">Security model</a> ·
@@ -32,7 +32,7 @@
 
 Install one small pod. ClusterSentinel watches your Deployments, StatefulSets, DaemonSets, Jobs, CronJobs, Pods and RBAC, checks them against 18 built-in rules (privileged containers, host namespaces, root users, `latest` tags, wildcard RBAC, cluster-admin bindings and more) and stores every issue as a `SecurityFinding` you can read with `kubectl`. It never changes your workloads: it tells you what to fix and how, and you decide.
 
-> **Status: pre-alpha (Phase 2 of 7).** The operator watches workloads, Pods, RBAC and namespaces and evaluates all 18 rules, but **it only logs what it finds**: results become `SecurityFinding` resources in Phase 3, and the CLI, notifications and Helm chart come after that. Everything under [Features](#features) is the 0.1 target; [docs/implementation-plan.md](docs/implementation-plan.md) tracks what is done.
+> **Status: pre-alpha (Phase 3 of 7).** The operator evaluates all 18 rules and writes what it finds as `SecurityFinding` resources, resolves them when they are fixed and keeps a cluster `SecurityReport`. Per-namespace `SecurityPolicy`, the CLI, notifications and the Helm chart come next. Everything under [Features](#features) is the 0.1 target; [docs/implementation-plan.md](docs/implementation-plan.md) tracks what is done.
 
 ## Features
 
@@ -67,16 +67,22 @@ cd clustersentinel
 make kind-deploy                          # local kind cluster, image built and loaded, operator deployed
 export KUBECONFIG=$PWD/bin/kind-dev.kubeconfig
 kubectl -n clustersentinel-system get pods
-kubectl -n clustersentinel-system logs deploy/clustersentinel-controller-manager | grep "Analysis result"
-kubectl apply -k config/samples/          # example SecurityPolicy, SecurityFinding and SecurityReport
-kubectl get securitypolicies,securityfindings -A
+kubectl get securityfindings -A                       # one finding per workload, rule and container
+kubectl -n clustersentinel-system get securityreport cluster
 ```
 
-Until Phase 3, results are log lines such as:
+A Deployment running `nginx:latest` with the default security context gives, for example:
 
-```json
-{"msg":"Analysis result changed","resourceKind":"Pod","resourceNamespace":"demo","resourceName":"debug","violations":8,"rules":["CS-CONTAINER-001/debug","CS-CONTAINER-002/debug","CS-IMAGE-002/debug","CS-SA-001", "..."]}
 ```
+$ kubectl get securityfindings -n demo
+NAME                                       SEVERITY   RULE               KIND         RESOURCE   STATE   LAST SEEN
+deployment-web-cs-container-002-159d4ac9   HIGH       CS-CONTAINER-002   Deployment   web        Open    8m35s
+deployment-web-cs-container-003-371d82aa   MEDIUM     CS-CONTAINER-003   Deployment   web        Open    8m35s
+deployment-web-cs-container-004-931fac72   LOW        CS-CONTAINER-004   Deployment   web        Open    8m35s
+...
+```
+
+`kubectl describe securityfinding <name> -n demo` shows the evidence (the exact field), the recommendation and a link to the rule's documentation. Fix the workload and the finding turns `Resolved`; delete it and its findings are deleted with it.
 
 The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/config`, so they cannot reach any other cluster. `make kind-down` deletes the cluster.
 
@@ -86,7 +92,7 @@ The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/c
 | --- | --- |
 | `make test` | Unit tests, plus CRD validation and controller tests against a real API server (envtest) |
 | `make lint` | golangci-lint |
-| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics, RBAC and detection of an insecure workload, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
+| `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics, RBAC, findings for an insecure workload (created, resolved, garbage-collected) and the report, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
 | `make run` | Runs the operator on your machine against the **current** kubeconfig context (check it first) |
 | `make manifests generate` | Regenerates CRDs, RBAC and deepcopy code after changing `api/` or RBAC markers |
 | `make site-data` | Regenerates the website's rule data from the rule catalog (CI fails if it is stale) |
@@ -159,7 +165,7 @@ website/               Website and docs (React + Vite), published to GitHub Page
 
 1. ~~Bootstrap: CRDs, manager, Dockerfile, kind workflow, RBAC contract~~ (done)
 2. ~~Workload scanning: controllers, analyzer, the 18 rules~~ (done)
-3. Findings: reconciliation, deduplication, resolution, retention
+3. ~~Findings: reconciliation, deduplication, resolution, retention, cluster report~~ (done)
 4. Configuration: profiles, overrides, namespace filtering
 5. CLI: `summary`, `findings`, `describe`, `report`, `fix`, `rules`, CI gate
 6. Notifications (Discord, Slack, webhook) and Prometheus metrics
@@ -167,7 +173,7 @@ website/               Website and docs (React + Vite), published to GitHub Page
 
 ## Limitations
 
-- Pre-alpha: results are only logged; SecurityFindings, the CLI, notifications and the Helm chart do not exist yet.
+- Pre-alpha: the CLI, notifications and the Helm chart do not exist yet.
 - `SecurityPolicy` objects are not read yet (Phase 4): the operator-wide profile and rules apply to every namespace.
 - Tested on Kubernetes 1.31, 1.32, 1.33 and 1.34 (kind, full e2e) and 1.37 (envtest); not yet on a managed cluster (EKS, GKE, AKS).
 - The NetworkPolicy rule only checks whether a namespace has any NetworkPolicy. It is a hint, not proof that traffic is or is not restricted.
