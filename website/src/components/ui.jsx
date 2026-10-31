@@ -60,7 +60,7 @@ export function QuickStart() {
         ['cd clustersentinel'],
         ['make kind-deploy', 'local kind cluster, image built and loaded, operator deployed'],
         ['export KUBECONFIG=$PWD/bin/kind-dev.kubeconfig'],
-        ['kubectl -n clustersentinel-system logs deploy/clustersentinel-controller-manager | grep "Analysis result"'],
+        ['kubectl get securityfindings -A'],
       ]}
     />
   )
