@@ -126,19 +126,24 @@ func (r *podReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.R
 	pod := &corev1.Pod{}
 	if err := r.Client.Get(ctx, req.NamespacedName, pod); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.forget(ctx, key)
+			return r.gone(ctx, key)
 		}
 		return ctrl.Result{}, err
 	}
+	if !pod.DeletionTimestamp.IsZero() {
+		return r.gone(ctx, key)
+	}
 	// A Pod adopted by a controller since it was enqueued is analyzed elsewhere now.
-	if want, ok := podRequest(pod); !ok || want != req || !pod.DeletionTimestamp.IsZero() {
+	if want, ok := podRequest(pod); !ok || want != req {
 		return r.forget(ctx, key)
 	}
 	vs, err := r.evaluatePod(ctx, pod)
 	if err != nil {
 		return ctrl.Result{}, err
 	}
-	r.Recorder.Record(ctx, key, affected("v1", "Pod", pod), vs)
+	if err := r.Recorder.Record(ctx, key, affected("v1", "Pod", pod), vs); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
 
@@ -181,7 +186,9 @@ func (r *podReconciler) reconcileGroup(ctx context.Context, key, namespace, uid 
 	ref := podGroupController(&pods[0])
 	res := affected(ref.APIVersion, ref.Kind, &pods[0])
 	res.Name, res.UID = ref.Name, string(ref.UID)
-	r.Recorder.Record(ctx, key, res, merged)
+	if err := r.Recorder.Record(ctx, key, res, merged); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
 
