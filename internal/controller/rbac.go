@@ -77,7 +77,7 @@ func (r *roleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	obj := r.newObject()
 	if err := r.Client.Get(ctx, req.NamespacedName, obj); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.forget(ctx, key)
+			return r.gone(ctx, key)
 		}
 		return ctrl.Result{}, err
 	}
@@ -85,7 +85,10 @@ func (r *roleReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ctrl.
 	if !ok || rules.IsBuiltInRBAC(obj) || !r.inScope(obj) {
 		return r.forget(ctx, key)
 	}
-	r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), rules.EvaluateRole(policy, r.Settings))
+	vs := rules.EvaluateRole(policy, r.Settings)
+	if err := r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), vs); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
 
@@ -132,7 +135,7 @@ func (r *bindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	obj := r.newObject()
 	if err := r.Client.Get(ctx, req.NamespacedName, obj); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.forget(ctx, key)
+			return r.gone(ctx, key)
 		}
 		return ctrl.Result{}, err
 	}
@@ -141,7 +144,9 @@ func (r *bindingReconciler) Reconcile(ctx context.Context, req ctrl.Request) (ct
 	}
 	roleRef, subjects := r.binding(obj)
 	vs := rules.EvaluateBinding(obj.GetNamespace(), roleRef, subjects, r.Settings)
-	r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), vs)
+	if err := r.Recorder.Record(ctx, key, affected(rbacAPIVersion, r.kind, obj), vs); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
 
