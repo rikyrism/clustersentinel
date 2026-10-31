@@ -32,3 +32,8 @@ jobs:
         run: |
           make test
           git diff --exit-code -- api config || { echo "Generated files are stale: run 'make manifests generate' and commit"; exit 1; }
+
+      - name: Check website rule data matches the rule catalog
+        run: |
+          make site-data
+          git diff --exit-code -- website/src/data || { echo "Website rule data is stale: run 'make site-data' and commit"; exit 1; }
