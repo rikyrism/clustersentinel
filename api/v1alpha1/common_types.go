@@ -61,4 +61,7 @@ const (
 	LabelState        = "security.clustersentinel.io/state"
 	LabelResourceKind = "security.clustersentinel.io/resource-kind"
 	LabelResourceUID  = "security.clustersentinel.io/resource-uid"
+	// LabelScanKey groups the findings of one analyzed unit (a workload, a group of Pods,
+	// an RBAC object or a namespace). Its value is a hash of the unit's key.
+	LabelScanKey = "security.clustersentinel.io/scan-key"
 )
