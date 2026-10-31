@@ -27,7 +27,7 @@ const FLOW = [
   ['02 · Evaluate', 'Templates, not replicas',
     'A Deployment with 50 replicas is analyzed once, from its pod template, only when its spec changes.'],
   ['03 · Record', 'Only when something changed',
-    'Each result is fingerprinted. An unchanged result causes no log line today and no API write later.'],
+    'Each result is fingerprinted. An unchanged result causes no API write, also after a restart.'],
 ]
 
 const PLATFORMS = ['Amazon EKS', 'Google GKE', 'Azure AKS', 'DigitalOcean', 'k3s', 'On-premises', 'kind']
@@ -104,8 +104,9 @@ export default function Home() {
         </div>
         <div className="container">
           <Notice label="Pre-alpha">
-            Phase {PHASES_DONE} of {PHASES.length}. All 18 rules run and results are written to the operator log.
-            Results become <code>SecurityFinding</code> resources in Phase 3. See the <a href="/roadmap/">roadmap</a>.
+            Phase {PHASES_DONE} of {PHASES.length}. All 18 rules run and every issue is a <code>SecurityFinding</code>{' '}
+            you can read with kubectl. Policies per namespace, the CLI and alerts come next. See the{' '}
+            <a href="/roadmap/">roadmap</a>.
           </Notice>
         </div>
       </div>
@@ -220,10 +221,10 @@ export default function Home() {
               </div>
             ))}
             <div className="depth" style={depth(3)}>
-              <div className="step later">
-                <span className="label">04 · Report (Phase 3+)</span>
-                <h3>Findings, CLI, alerts</h3>
-                <p><code>kubectl get securityfindings -A</code>, a CLI, and Discord, Slack or webhook notifications.</p>
+              <div className="step">
+                <span className="label">04 · Report</span>
+                <h3>Findings and a cluster report</h3>
+                <p><code>kubectl get securityfindings -A</code> today; a CLI and Discord, Slack or webhook alerts later.</p>
               </div>
             </div>
           </div>
