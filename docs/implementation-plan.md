@@ -8,9 +8,9 @@ assumptions made where the requirements were ambiguous, and the status of each p
 | Phase | Scope | Status |
 | --- | --- | --- |
 | 1. Bootstrap | Go module, Kubebuilder project, CRD types, manager, Dockerfile, kind workflow, RBAC contract | **Done** |
-| 2. Workload scanning | Workload, Pod, RBAC and namespace controllers, the 18 rules, unit and envtest tests | **Done** (results are logged; Phase 3 writes them) |
-| 3. Findings | Finding reconciliation, deduplication, resolution, retention | Next |
-| 4. Configuration | SecurityPolicy profiles, overrides, namespace filtering | Planned (config schema done) |
+| 2. Workload scanning | Workload, Pod, RBAC and namespace controllers, the 18 rules, unit and envtest tests | **Done** |
+| 3. Findings | Finding reconciliation, deduplication, resolution, retention, cluster report | **Done** |
+| 4. Configuration | SecurityPolicy profiles, overrides, namespace filtering | Next (config schema done) |
 | 5. CLI | `summary`, `findings`, `describe`, `report`, `fix`, `rules`, `version` | Planned |
 | 6. Notifications and metrics | Discord, Slack, generic webhook; Prometheus metrics | Planned |
 | 7. Helm and release | Chart, CI/CD, security scanning, documentation | Planned |
@@ -55,13 +55,13 @@ fields and is cheap.
 | Client QPS 10 / burst 20, at most 2 concurrent reconciles per controller | `cmd/main.go`, config | Done |
 | Reconcile only on `metadata.generation` or controller changes (status churn ignored) | `internal/controller/scanner.go` | Done (verified by envtest) |
 | ServiceAccount changes re-analyze only the workloads using it (field index), and only when `automountServiceAccountToken` changes | `internal/controller/scanner.go` | Done |
-| Fingerprint of each result; an unchanged result is not logged (Phase 3: not written) | `internal/controller/recorder.go` | Done |
+| Fingerprint of each result; an unchanged result is neither logged nor written, and a restart rewrites nothing (verified on kind) | `internal/controller/recorder.go` | Done |
 | Periodic rescan from the cache, default every 30 minutes with 10% jitter so it never arrives all at once, `0` disables it | `internal/controller/scanner.go` | Done |
-| `lastDetectedAt` refreshed at most once per rescan interval | Phase 3 | Planned |
-| Findings carry an ownerReference to their workload, so Kubernetes deletes them with it | Phase 3 | Planned |
-| Resolved findings deleted after `resolvedRetention` (default 7 days) | Phase 3 | Planned |
+| `lastDetectedAt` refreshed at most once per rescan interval | `internal/controller/findings.go` | Done |
+| Findings carry an ownerReference to their workload, so Kubernetes deletes them with it, even while the operator is down | `internal/controller/findings.go` | Done (verified on kind) |
+| Resolved findings deleted after `resolvedRetention` (default 7 days) | `internal/controller/report.go` | Done |
 | Notifications from the initial scan sent as one digest, later ones batched | Phase 6 | Planned |
-| One cluster SecurityReport, updated at most once a minute | Phase 3 | Planned |
+| One cluster SecurityReport, written at most once a minute and only when it changed | `internal/controller/report.go` | Done |
 
 Starting resources: requests 25m CPU / 64Mi, limits 200m CPU / 128Mi. These are targets
 to be measured, not guarantees. Measured on kind (one node, about 15 Pods):
@@ -70,6 +70,7 @@ to be measured, not guarantees. Measured on kind (one node, about 15 Pods):
 | --- | --- | --- |
 | Phase 1, no controllers | 26 MB | 7 MB |
 | Phase 2, all controllers running | 32 MB | 9 MB |
+| Phase 3, 22 findings cached, after a restart | 34 MB | 10 MB |
 
 Clusters with thousands of Pods will probably need a 256Mi limit; sizing guidance will be
 published once it is measured on a large cluster.
@@ -97,9 +98,24 @@ It does not copy findings. Per-namespace summaries are computed by the CLI from 
 ### Finding identity
 
 `name = <kind>-<resource name, truncated>-<rule id>-<8 hex of sha256(uid, ruleID, container)>`,
-plus labels for rule ID, severity, state, resource kind and resource UID. The UID in the
-hash means a deleted and recreated workload never inherits old findings. The hash makes
-the name deterministic, so repeated scans update instead of duplicating.
+plus labels for rule ID, severity, state, resource kind, resource UID and scan key (a hash
+of the analyzed unit, used to find all findings of one workload). The UID in the hash
+means a deleted and recreated workload never inherits old findings. The hash makes the
+name deterministic, so repeated scans update instead of duplicating.
+
+### Finding lifecycle
+
+- A violation creates an `Open` finding. When it is no longer detected the finding becomes
+  `Resolved` (`resolvedAt` set); if it comes back, the same finding reopens and keeps its
+  `firstDetectedAt`.
+- A unit that leaves the scan scope (a ReplicaSet scaled to zero, a Pod adopted by a
+  controller, a built-in RBAC object) has its findings resolved. A deleted object's
+  findings are deleted by Kubernetes through the owner reference, not by the operator.
+- At start, the leader resolves open findings no controller will touch again: findings of
+  rules that are now disabled and of namespaces that are no longer scanned.
+- Every minute it deletes Resolved findings older than `resolvedRetention` and updates the
+  report if its counts or condition changed. `ScannerHealthy` turns `False` when writes
+  of findings failed in the last interval.
 
 ### Policy precedence
 
@@ -108,8 +124,9 @@ the name deterministic, so repeated scans update instead of duplicating.
 2. Otherwise the operator-wide defaults from Helm values (`scanner.profile`, `scanner.rules`).
 
 RBAC rules (`CS-RBAC-*`) are configured operator-wide only, because ClusterRoles and
-ClusterRoleBindings have no namespace. Findings about cluster-scoped objects are stored in
-the operator's namespace.
+ClusterRoleBindings have no namespace. Findings about ClusterRoles and
+ClusterRoleBindings are stored in the operator's namespace; findings about a namespace
+(missing NetworkPolicy) are stored in that namespace, so its team sees them.
 
 ## Rules
 
@@ -228,10 +245,10 @@ uses `status.notifiedSeverity` / `status.notifiedState` on each finding.
 
 | Level | Tool | Covers | Status |
 | --- | --- | --- | --- |
-| Unit | `go test` | Rule catalog, config validation, cache trimming, memory limit, every rule (positive, negative, inheritance, Windows, image references), result change detection; later finding identity, notifier formatting and retry | Phase 1–2 parts done |
+| Unit | `go test` | Rule catalog, config validation, cache trimming, memory limit, every rule (positive, negative, inheritance, Windows, image references), result change detection, finding identity; later notifier formatting and retry | Phase 1–3 parts done |
 | API | envtest | CRD schema validation and defaults on a real API server | Done |
-| Controller | envtest | Every workload kind, CronJob Jobs and Deployment ReplicaSets skipped, Pod groups, ServiceAccount changes, RBAC, NetworkPolicy, status updates ignored, excluded namespace; later findings created, updated, resolved, policy changes | Phase 2 parts done |
-| End-to-end | kind | Deploy, pod hardening, metrics, RBAC least privilege, insecure Deployment detected then cleared, cluster-admin binding detected; later the same through SecurityFindings | Phase 1–2 parts done |
+| Controller | envtest | Every workload kind, CronJob Jobs and Deployment ReplicaSets skipped, Pod groups, ServiceAccount changes, RBAC, NetworkPolicy, status updates ignored, excluded namespace, findings created, updated, resolved, reopened and refreshed, stale cache on create, startup sweep, retention, report; later policy changes | Phase 2–3 parts done |
+| End-to-end | kind | Deploy, pod hardening, metrics, RBAC least privilege, insecure Deployment detected then cleared, cluster-admin binding detected, the same through SecurityFindings, findings garbage-collected with their object, report healthy | Phase 1–3 parts done |
 | Manual checks | kind, buildx | `make run`; `--metrics-secure` (401 without token, 403 without permission, 200 with `metrics-reader`); amd64 and arm64 images build and run | Done 2026-10-30 |
 | Helm | `helm lint`, `helm template`, kubeconform | Chart validity, RBAC, security context | Phase 7 |
 
