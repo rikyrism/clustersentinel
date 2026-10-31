@@ -138,12 +138,15 @@ func (r *workloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 	obj := r.newObject()
 	if err := r.Client.Get(ctx, req.NamespacedName, obj); err != nil {
 		if apierrors.IsNotFound(err) {
-			return r.forget(ctx, key)
+			return r.gone(ctx, key)
 		}
 		return ctrl.Result{}, err
 	}
+	if !obj.GetDeletionTimestamp().IsZero() {
+		return r.gone(ctx, key)
+	}
 	spec, path := r.podSpec(obj)
-	if spec == nil || !obj.GetDeletionTimestamp().IsZero() || !r.Namespaces.NamespaceSelected(req.Namespace) {
+	if spec == nil || !r.Namespaces.NamespaceSelected(req.Namespace) {
 		return r.forget(ctx, key)
 	}
 	sa, err := r.serviceAccount(ctx, req.Namespace, spec)
@@ -151,6 +154,8 @@ func (r *workloadReconciler) Reconcile(ctx context.Context, req ctrl.Request) (c
 		return ctrl.Result{}, err
 	}
 	vs := rules.EvaluateWorkload(rules.Workload{SpecPath: path, Spec: spec, ServiceAccount: sa}, r.Settings)
-	r.Recorder.Record(ctx, key, affected(r.apiVersion, r.kind, obj), vs)
+	if err := r.Recorder.Record(ctx, key, affected(r.apiVersion, r.kind, obj), vs); err != nil {
+		return ctrl.Result{}, err
+	}
 	return r.done()
 }
