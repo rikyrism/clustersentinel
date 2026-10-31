@@ -49,9 +49,9 @@ type Metadata struct {
 	Profiles []securityv1alpha1.Profile
 }
 
-const docsBase = "https://github.com/rikyrism/clustersentinel/blob/main/docs/security-rules.md#"
+const docsBase = "https://clustersentinel.rikyrism.my.id/docs/#"
 
-// DocumentationURL returns the rule's section in docs/security-rules.md.
+// DocumentationURL returns the rule's section in the website documentation.
 func (m Metadata) DocumentationURL() string { return docsBase + strings.ToLower(m.ID) }
 
 var (
