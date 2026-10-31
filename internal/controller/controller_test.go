@@ -34,6 +34,7 @@ import (
 	"k8s.io/utils/ptr"
 	"sigs.k8s.io/controller-runtime/pkg/client"
 
+	securityv1alpha1 "github.com/rikyrism/clustersentinel/api/v1alpha1"
 	"github.com/rikyrism/clustersentinel/internal/rules"
 )
 
@@ -145,6 +146,8 @@ func TestDeploymentLifecycle(t *testing.T) {
 		v.Evidence != "spec.template.spec.containers[0].securityContext.privileged is true" {
 		t.Fatalf("violation = %+v", v)
 	}
+	open := securityv1alpha1.FindingOpen
+	expectFindings(t, ns, key, map[string]securityv1alpha1.FindingState{rules.IDPrivileged: open, rules.IDPrivilegeEscalation: open})
 
 	// A status-only update must not reach the reconciler.
 	records := r.records
@@ -166,6 +169,8 @@ func TestDeploymentLifecycle(t *testing.T) {
 		t.Fatal(err)
 	}
 	expectRules(t, key)
+	resolved := securityv1alpha1.FindingResolved
+	expectFindings(t, ns, key, map[string]securityv1alpha1.FindingState{rules.IDPrivileged: resolved, rules.IDPrivilegeEscalation: resolved})
 
 	if err := k8s.Delete(ctx, d); err != nil {
 		t.Fatal(err)
