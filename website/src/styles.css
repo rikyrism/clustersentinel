@@ -550,8 +550,6 @@ section.tinted { background: linear-gradient(180deg, #fff 0%, var(--bg) 100%); }
 .site-footer p { margin: 0; }
 .site-footer nav { display: flex; gap: 18px; flex-wrap: wrap; }
 .site-footer a { text-decoration: none; }
-.site-footer .brand { color: var(--fg); }
-.site-footer .brand img { width: 22px; height: 22px; border-radius: 6px; }
 .site-footer a:hover { text-decoration: underline; }
 
 @media (prefers-reduced-motion: reduce) {
