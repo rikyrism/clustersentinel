@@ -19,6 +19,8 @@
 </p>
 
 <p align="center">
+  <a href="https://clustersentinel.rikyrism.my.id">Website</a> ·
+  <a href="https://clustersentinel.rikyrism.my.id/docs/">Docs</a> ·
   <a href="#quick-start">Quick start</a> ·
   <a href="#how-it-works">How it works</a> ·
   <a href="#security-model">Security model</a> ·
@@ -87,6 +89,7 @@ The kind targets write their own kubeconfig to `bin/` and never touch `~/.kube/c
 | `make test-e2e` | Creates a kind cluster, deploys the operator, checks readiness, hardening, metrics, RBAC and detection of an insecure workload, then deletes the cluster. `KIND_NODE_IMAGE=kindest/node:v1.31.12` picks the Kubernetes version |
 | `make run` | Runs the operator on your machine against the **current** kubeconfig context (check it first) |
 | `make manifests generate` | Regenerates CRDs, RBAC and deepcopy code after changing `api/` or RBAC markers |
+| `make site-data` | Regenerates the website's rule data from the rule catalog (CI fails if it is stale) |
 
 ## How it works
 
@@ -146,9 +149,10 @@ internal/controller/   Controllers: workloads, Pods, RBAC, namespaces (+ envtest
 internal/manager/      Cache trimming, memory limit, RBAC contract
 internal/rules/        Rule catalog, profiles and the 18 rule checks
 config/                Kustomize manifests: CRDs, RBAC, manager, samples
-hack/                  kind cluster config, development config
+hack/                  kind cluster config, development config, website rule data generator
 test/e2e/              End-to-end tests on kind
 docs/                  Implementation plan, architecture, assets
+website/               Website and docs (React + Vite), published to GitHub Pages
 ```
 
 ## Roadmap
