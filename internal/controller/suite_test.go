@@ -50,8 +50,9 @@ const (
 )
 
 var (
-	k8s      client.Client
-	recorder = &fakeRecorder{results: map[string]result{}}
+	k8s             client.Client
+	recorder        = &fakeRecorder{results: map[string]result{}}
+	findingRecorder *FindingRecorder
 )
 
 // result is what the fake recorder keeps per key.
@@ -66,16 +67,39 @@ type fakeRecorder struct {
 	results map[string]result
 }
 
-func (f *fakeRecorder) Record(_ context.Context, key string, res securityv1alpha1.AffectedResource, vs []rules.Violation) {
+func (f *fakeRecorder) Record(_ context.Context, key string, res securityv1alpha1.AffectedResource, vs []rules.Violation) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.results[key] = result{res: res, violations: vs, records: f.results[key].records + 1}
+	return nil
 }
 
-func (f *fakeRecorder) Forget(_ context.Context, key string) {
+func (f *fakeRecorder) Forget(_ context.Context, key string, _ bool) error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	delete(f.results, key)
+	return nil
+}
+
+// teeRecorder hands every result to the fake recorder, which the scanning tests inspect,
+// and to the real FindingRecorder, so every controller test also writes findings.
+type teeRecorder struct {
+	fake    *fakeRecorder
+	finding *FindingRecorder
+}
+
+func (t teeRecorder) Record(ctx context.Context, key string, res securityv1alpha1.AffectedResource, vs []rules.Violation) error {
+	if err := t.finding.Record(ctx, key, res, vs); err != nil {
+		return err
+	}
+	return t.fake.Record(ctx, key, res, vs)
+}
+
+func (t teeRecorder) Forget(ctx context.Context, key string, deleted bool) error {
+	if err := t.finding.Forget(ctx, key, deleted); err != nil {
+		return err
+	}
+	return t.fake.Forget(ctx, key, deleted)
 }
 
 func (f *fakeRecorder) get(key string) (result, bool) {
@@ -125,9 +149,10 @@ func TestMain(m *testing.M) {
 		panic(err)
 	}
 	ctx, cancel := context.WithCancel(context.Background())
+	findingRecorder = NewFindingRecorder(mgr.GetClient(), mgr.GetAPIReader(), operatorNamespace, 0)
 	if err := Setup(ctx, mgr, &Scanner{
 		Client:                  mgr.GetClient(),
-		Recorder:                recorder,
+		Recorder:                teeRecorder{fake: recorder, finding: findingRecorder},
 		Namespaces:              opCfg.Scanner.Namespaces,
 		Settings:                opCfg.Scanner.RuleSettings(),
 		MaxConcurrentReconciles: 2,
