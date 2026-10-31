@@ -2,7 +2,7 @@ import { useState } from 'react'
 import rules from '../data/rules.json'
 import { Severity } from './ui.jsx'
 
-// Real output: the rule engine run on DEPLOYMENT with the recommended profile.
+// Real output of the operator for DEPLOYMENT with the recommended profile, captured on kind.
 const DEPLOYMENT = `apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -49,18 +49,48 @@ const LOG = `{
 }`
 
 const KUBECTL = `$ kubectl get securityfindings -n shop
-NAME                               SEVERITY   RULE               KIND         RESOURCE   STATE
-deployment-api-cs-container-001-…  CRITICAL   CS-CONTAINER-001   Deployment   api        Open
-deployment-api-cs-container-002-…  HIGH       CS-CONTAINER-002   Deployment   api        Open
-deployment-api-cs-container-003-…  MEDIUM     CS-CONTAINER-003   Deployment   api        Open
-deployment-api-cs-image-001-…      MEDIUM     CS-IMAGE-001       Deployment   api        Open
-deployment-api-cs-container-004-…  LOW        CS-CONTAINER-004   Deployment   api        Open
-…`
+NAME                                       SEVERITY   RULE               KIND         RESOURCE   STATE
+deployment-api-cs-container-001-126beb6f   CRITICAL   CS-CONTAINER-001   Deployment   api        Open
+deployment-api-cs-container-002-1726c4ca   HIGH       CS-CONTAINER-002   Deployment   api        Open
+deployment-api-cs-container-003-3db5b687   MEDIUM     CS-CONTAINER-003   Deployment   api        Open
+deployment-api-cs-container-004-7b32104d   LOW        CS-CONTAINER-004   Deployment   api        Open
+deployment-api-cs-container-005-fb550622   LOW        CS-CONTAINER-005   Deployment   api        Open
+deployment-api-cs-container-007-5dfbcf4d   LOW        CS-CONTAINER-007   Deployment   api        Open
+deployment-api-cs-image-001-344e7fa9       MEDIUM     CS-IMAGE-001       Deployment   api        Open
+deployment-api-cs-sa-001-98a6ecad          LOW        CS-SA-001          Deployment   api        Open`
+
+const YAML = `apiVersion: security.clustersentinel.io/v1alpha1
+kind: SecurityFinding
+metadata:
+  name: deployment-api-cs-container-001-126beb6f
+  namespace: shop
+  labels:
+    security.clustersentinel.io/rule-id: CS-CONTAINER-001
+    security.clustersentinel.io/severity: CRITICAL
+    security.clustersentinel.io/state: Open
+  ownerReferences:            # deleted with the Deployment
+    - apiVersion: apps/v1
+      kind: Deployment
+      name: api
+spec:
+  ruleID: CS-CONTAINER-001
+  severity: CRITICAL
+  title: Privileged container
+  resource: {kind: Deployment, namespace: shop, name: api, container: api}
+  evidence: spec.template.spec.containers[0].securityContext.privileged is true
+  recommendation: Remove securityContext.privileged, or set it to false. Grant only
+    the specific capabilities the container needs.
+  documentationURL: https://clustersentinel.web.id/docs/#cs-container-001
+status:
+  state: Open
+  firstDetectedAt: "2026-10-31T00:39:18Z"
+  lastDetectedAt: "2026-10-31T00:39:18Z"`
 
 const TABS = [
   ['results', 'Findings'],
+  ['kubectl', 'kubectl get'],
+  ['yaml', 'One finding'],
   ['log', 'Operator log'],
-  ['kubectl', 'kubectl · Phase 3'],
 ]
 
 export default function Example() {
@@ -96,16 +126,22 @@ export default function Example() {
             ))}
           </ul>
         )}
-        {tab === 'log' && (
-          <div role="tabpanel">
-            <p className="hint">What the operator writes today, once per change. Timestamp and reconcile fields left out.</p>
-            <pre className="plain"><code>{LOG}</code></pre>
-          </div>
-        )}
         {tab === 'kubectl' && (
           <div role="tabpanel">
-            <p className="hint">Planned for Phase 3: each result becomes a <code>SecurityFinding</code>. Names are shortened.</p>
+            <p className="hint">Each result is a <code>SecurityFinding</code> in the workload&apos;s namespace.</p>
             <pre className="plain"><code>{KUBECTL}</code></pre>
+          </div>
+        )}
+        {tab === 'yaml' && (
+          <div role="tabpanel">
+            <p className="hint">One of them, shortened. Fix the Deployment and its state turns <code>Resolved</code>.</p>
+            <pre className="plain"><code>{YAML}</code></pre>
+          </div>
+        )}
+        {tab === 'log' && (
+          <div role="tabpanel">
+            <p className="hint">Changes are also logged once, for your log stack. Timestamp and reconcile fields left out.</p>
+            <pre className="plain"><code>{LOG}</code></pre>
           </div>
         )}
       </div>
