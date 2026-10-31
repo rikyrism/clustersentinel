@@ -49,7 +49,7 @@ type Metadata struct {
 	Profiles []securityv1alpha1.Profile
 }
 
-const docsBase = "https://clustersentinel.rikyrism.my.id/docs/#"
+const docsBase = "https://clustersentinel.web.id/docs/#"
 
 // DocumentationURL returns the rule's section in the website documentation.
 func (m Metadata) DocumentationURL() string { return docsBase + strings.ToLower(m.ID) }
