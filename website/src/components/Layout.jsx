@@ -30,11 +30,14 @@ export default function Layout({ current, children }) {
       <main id="main">{children}</main>
       <footer className="site-footer">
         <div className="container">
-          <p>© {new Date().getFullYear()} ClusterSentinel. All rights reserved.</p>
+          <p>
+            © {new Date().getFullYear()} ClusterSentinel. All rights reserved. Source code:{' '}
+            <a href={REPO}>{REPO.replace('https://', '')}</a>
+          </p>
           <nav aria-label="Footer">
             <a href="/docs/">Docs</a>
             <a href="/roadmap/">Roadmap</a>
-            <a href={REPO}>Source</a>
+            <a href={REPO}>GitHub</a>
             <a href={`${REPO}/issues`}>Issues</a>
             <a href={`${REPO}/blob/main/CHANGELOG.md`}>Changelog</a>
           </nav>
