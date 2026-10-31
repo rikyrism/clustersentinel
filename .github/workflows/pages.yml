@@ -1,7 +1,7 @@
 name: Website
 
 # Builds website/ (React + Vite) and publishes it to GitHub Pages at
-# https://clustersentinel.rikyrism.my.id. With Actions deployments the custom domain is set
+# https://clustersentinel.web.id. With Actions deployments the custom domain is set
 # in Settings > Pages, not with a CNAME file.
 on:
   push:
