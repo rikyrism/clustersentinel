@@ -56,7 +56,7 @@ type RuleConfig struct {
 }
 
 // RuleOverrides holds per-rule overrides keyed by a stable, readable rule key.
-// Each key maps to one rule ID (see https://clustersentinel.rikyrism.my.id/docs/#rules).
+// Each key maps to one rule ID (see https://clustersentinel.web.id/docs/#rules).
 type RuleOverrides struct {
 	// CS-CONTAINER-001
 	// +optional
