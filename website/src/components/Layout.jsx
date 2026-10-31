@@ -30,10 +30,7 @@ export default function Layout({ current, children }) {
       <main id="main">{children}</main>
       <footer className="site-footer">
         <div className="container">
-          <a className="brand" href="/">
-            <img src="/mark.svg" alt="" width="22" height="22" />
-            <span>ClusterSentinel</span>
-          </a>
+          <p>© {new Date().getFullYear()} ClusterSentinel. All rights reserved.</p>
           <nav aria-label="Footer">
             <a href="/docs/">Docs</a>
             <a href="/roadmap/">Roadmap</a>
